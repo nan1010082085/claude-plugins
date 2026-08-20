@@ -65,7 +65,7 @@ export function setupClaudeCode(): string[] {
   if (!already) {
     hooks['UserPromptSubmit'] = [
       ...entries,
-      { hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}` }] },
+      { hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}`, timeout: 60 }] },
     ]
     settings.hooks = hooks
     writeJson(settingsPath, settings)
