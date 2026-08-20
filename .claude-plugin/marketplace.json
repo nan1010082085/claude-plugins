@@ -6,7 +6,7 @@
       "name": "vision-relay",
       "source": "./packages/vision-relay",
       "description": "为无视觉能力的编码模型中转图片理解，支持 OpenAI / Anthropic 两种协议，大图自动压缩",
-      "version": "0.1.8"
+      "version": "0.1.9"
     }
   ]
 }
