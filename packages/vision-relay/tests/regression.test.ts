@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultConfig, saveConfig } from '../src/config.js'
 import { runClaudeCodeHook } from '../src/hook.js'
 import { configPath } from '../src/config.js'
-import { readImageRef, DEFAULT_MAX_IMAGE_BYTES } from '../src/images.js'
+import { readImageRef } from '../src/images.js'
 
 const describeImageMock = vi.hoisted(() => vi.fn(async () => '描述'))
 vi.mock('../src/vision.js', () => ({ describeImage: describeImageMock }))
@@ -74,10 +74,7 @@ describe('图片大小上限（回归: 超大图不进内存）', () => {
   it('超过 maxBytes 拒绝读取', async () => {
     const bigFile = join(cwd, 'big.png')
     writeFileSync(bigFile, Buffer.alloc(1024)) // 1KB
-    await expect(readImageRef({ kind: 'path', value: bigFile }, cwd, 512)).rejects.toThrow('超过上限')
+    await expect(readImageRef({ kind: 'path', value: bigFile }, cwd, 512)).rejects.toThrow(/硬上限/)
   })
 
-  it('默认上限 15MB 存在于配置', () => {
-    expect(defaultConfig().vision.maxImageBytes).toBe(DEFAULT_MAX_IMAGE_BYTES)
-  })
 })

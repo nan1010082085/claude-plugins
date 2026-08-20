@@ -10,7 +10,12 @@ export interface VisionConfig {
   maxTokens: number
   prompt: string
   timeoutMs: number
+  /** 图片硬上限（防 OOM），超过直接拒绝 */
   maxImageBytes: number
+  /** 超过则自动压缩（降分辨率/转 JPEG）再送识别 */
+  targetImageBytes: number
+  /** 长边像素上限，超过自动等比缩小（长截图常见超限点） */
+  maxImageEdge: number
 }
 
 export interface Config {
@@ -41,7 +46,9 @@ export function defaultConfig(): Config {
       maxTokens: 4096,
       prompt: DEFAULT_PROMPT,
       timeoutMs: 30000,
-      maxImageBytes: 15 * 1024 * 1024,
+      maxImageBytes: 100 * 1024 * 1024,
+      targetImageBytes: 5 * 1024 * 1024,
+      maxImageEdge: 8000,
     },
     hook: { enabled: true, maxImages: 4 },
   }
@@ -91,6 +98,9 @@ export function validateConfig(c: Config): string[] {
   if (!v.model) errs.push('vision.model 未配置')
   if (!Number.isInteger(v.maxTokens) || v.maxTokens <= 0) errs.push('vision.maxTokens 必须是正整数')
   if (!Number.isInteger(v.timeoutMs) || v.timeoutMs <= 0) errs.push('vision.timeoutMs 必须是正整数')
+  if (!Number.isInteger(v.maxImageBytes) || v.maxImageBytes <= 0) errs.push('vision.maxImageBytes 必须是正整数')
+  if (!Number.isInteger(v.targetImageBytes) || v.targetImageBytes <= 0) errs.push('vision.targetImageBytes 必须是正整数')
+  if (!Number.isInteger(v.maxImageEdge) || v.maxImageEdge <= 0) errs.push('vision.maxImageEdge 必须是正整数')
   return errs
 }
 

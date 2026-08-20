@@ -1,5 +1,5 @@
 import { loadConfig, validateConfig } from './config.js'
-import { findImageRefs, readImageRef } from './images.js'
+import { findImageRefs, prepareImage, readImageRef } from './images.js'
 import { describeImage } from './vision.js'
 
 function readStdin(): Promise<string> {
@@ -41,7 +41,11 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
     const results = await Promise.allSettled(
       refs.map(async (ref) => {
         const image = await readImageRef(ref, cwd, config.vision.maxImageBytes)
-        return describeImage(config.vision, image)
+        const prepared = await prepareImage(image, {
+          targetBytes: config.vision.targetImageBytes,
+          maxEdge: config.vision.maxImageEdge,
+        })
+        return describeImage(config.vision, prepared)
       }),
     )
     const parts = refs.map((ref, i) => {

@@ -43,6 +43,8 @@ hook 自动识别图片 -> 描述进入上下文 -> 编码模型基于描述回�
 
 配置文件：`~/.config/vision-relay/config.json`（0600 权限）。
 
+**大图不拒绝，自动压缩**：超过 5MB（`targetImageBytes`）或长边 8000px（`maxImageEdge`）的截图自动降分辨率/转 JPEG 再送识别；100MB（`maxImageBytes`）硬上限防 OOM。长截图、Retina 高分屏截图开箱即用。
+
 ## 命令
 
 | 命令 | 说明 |

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { loadConfig, validateConfig } from './config.js'
-import { readImageRef } from './images.js'
+import { prepareImage, readImageRef } from './images.js'
 import { describeImage } from './vision.js'
 
 const require = createRequire(import.meta.url)
@@ -53,7 +53,11 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
       process.cwd(),
       config.vision.maxImageBytes,
     )
-    const text = await describeImage(config.vision, image, question)
+    const prepared = await prepareImage(image, {
+      targetBytes: config.vision.targetImageBytes,
+      maxEdge: config.vision.maxImageEdge,
+    })
+    const text = await describeImage(config.vision, prepared, question)
     return { content: [{ type: 'text', text: `[vision-relay 对 ${image.source} 的识别结果]\n${text}` }] }
   } catch (e) {
     return { content: [{ type: 'text', text: `[vision-relay] 错误: ${(e as Error).message}` }], isError: true }
