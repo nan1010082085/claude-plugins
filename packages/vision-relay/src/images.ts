@@ -1,6 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
+
+export const DEFAULT_MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 export interface ImageRef {
   kind: 'path' | 'url'
@@ -61,13 +63,20 @@ export function findImageRefs(text: string, cwd: string): ImageRef[] {
   return refs
 }
 
-export async function readImageRef(ref: ImageRef, cwd: string): Promise<ImageInput> {
+export async function readImageRef(
+  ref: ImageRef,
+  cwd: string,
+  maxBytes: number = DEFAULT_MAX_IMAGE_BYTES,
+): Promise<ImageInput> {
   const mediaType = mediaTypeFor(ref.value)
   if (!mediaType) throw new Error(`无法识别图片类型: ${ref.value}`)
+  const sizeError = (n: number): Error =>
+    new Error(`图片 ${(n / 1024 / 1024).toFixed(1)}MB 超过上限 ${(maxBytes / 1024 / 1024).toFixed(0)}MB: ${ref.value}`)
   if (ref.kind === 'url') {
     const res = await fetch(ref.value)
     if (!res.ok) throw new Error(`下载图片失败 HTTP ${res.status}`)
     const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > maxBytes) throw sizeError(buf.length)
     return {
       data: buf,
       mediaType: res.headers.get('content-type')?.split(';')[0] || mediaType,
@@ -75,6 +84,8 @@ export async function readImageRef(ref: ImageRef, cwd: string): Promise<ImageInp
     }
   }
   const p = expandPath(ref.value, cwd)
+  const size = statSync(p).size
+  if (size > maxBytes) throw sizeError(size)
   return { data: readFileSync(p), mediaType, source: p }
 }
 

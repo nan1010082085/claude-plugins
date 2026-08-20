@@ -8,6 +8,7 @@ function readStdin(): Promise<string> {
     process.stdin.setEncoding('utf8')
     process.stdin.on('data', (c) => (data += c))
     process.stdin.on('end', () => resolve(data))
+    process.stdin.on('error', () => resolve(data))
   })
 }
 
@@ -17,41 +18,42 @@ export interface HookResult {
 
 /**
  * Claude Code UserPromptSubmit hook：扫描 prompt 中的图片路径/URL，
- * 逐张调视觉模型，把描述作为 additionalContext 注入对话。单图失败不阻塞。
+ * 并行调视觉模型，把描述作为 additionalContext 注入对话。
+ * 铁律：hook 永不抛错、永不阻塞用户会话（任何内部失败都静默降级）。
  */
 export async function runClaudeCodeHook(input: string, cwd: string): Promise<HookResult> {
-  let prompt = ''
   try {
-    prompt = (JSON.parse(input) as { prompt?: string }).prompt ?? ''
-  } catch {
-    prompt = input
-  }
-  const { config } = loadConfig()
-  if (!config.hook.enabled) return { additionalContext: null }
-
-  const errs = validateConfig(config)
-  if (errs.length) {
+    let prompt = ''
+    try {
+      prompt = (JSON.parse(input) as { prompt?: string }).prompt ?? ''
+    } catch {
+      prompt = input
+    }
+    const { config } = loadConfig()
+    if (!config.hook.enabled) return { additionalContext: null }
     // 配置问题不该阻塞用户会话，静默跳过
+    if (validateConfig(config).length) return { additionalContext: null }
+
+    const refs = findImageRefs(prompt, cwd).slice(0, config.hook.maxImages)
+    if (!refs.length) return { additionalContext: null }
+
+    // 并行识别：总耗时 = 最慢一张，而非串行累加，避免超过 hook 超时上限
+    const results = await Promise.allSettled(
+      refs.map(async (ref) => {
+        const image = await readImageRef(ref, cwd, config.vision.maxImageBytes)
+        return describeImage(config.vision, image)
+      }),
+    )
+    const parts = refs.map((ref, i) => {
+      const r = results[i]!
+      return r.status === 'fulfilled'
+        ? `[vision-relay 图片 #${i + 1}: ${ref.value}]（已识别，无需再调用 vision_describe）\n${r.value}`
+        : `[vision-relay 图片 #${i + 1}: ${ref.value}] 识别失败: ${(r.reason as Error).message}（可尝试用 vision_describe 工具重试）`
+    })
+    return { additionalContext: parts.join('\n\n') }
+  } catch {
     return { additionalContext: null }
   }
-
-  const refs = findImageRefs(prompt, cwd).slice(0, config.hook.maxImages)
-  const parts: string[] = []
-  for (const [i, ref] of refs.entries()) {
-    try {
-      const image = await readImageRef(ref, cwd)
-      const desc = await describeImage(config.vision, image)
-      parts.push(
-        `[vision-relay 图片 #${i + 1}: ${ref.value}]（已识别，无需再调用 vision_describe）\n${desc}`,
-      )
-    } catch (e) {
-      parts.push(
-        `[vision-relay 图片 #${i + 1}: ${ref.value}] 识别失败: ${(e as Error).message}（可尝试用 vision_describe 工具重试）`,
-      )
-    }
-  }
-  if (!parts.length) return { additionalContext: null }
-  return { additionalContext: parts.join('\n\n') }
 }
 
 export async function hookMain(): Promise<void> {

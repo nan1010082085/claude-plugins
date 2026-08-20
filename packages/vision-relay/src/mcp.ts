@@ -48,12 +48,21 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
     if (errs.length) {
       return { content: [{ type: 'text', text: `[vision-relay] 配置不完整: ${errs.join('; ')}` }], isError: true }
     }
-    const image = await readImageRef({ kind: url ? 'url' : 'path', value: url || path! }, process.cwd())
+    const image = await readImageRef(
+      { kind: url ? 'url' : 'path', value: url || path! },
+      process.cwd(),
+      config.vision.maxImageBytes,
+    )
     const text = await describeImage(config.vision, image, question)
     return { content: [{ type: 'text', text: `[vision-relay 对 ${image.source} 的识别结果]\n${text}` }] }
   } catch (e) {
     return { content: [{ type: 'text', text: `[vision-relay] 错误: ${(e as Error).message}` }], isError: true }
   }
+}
+
+/** 导出供测试：处理单条 JSON-RPC 消息 */
+export async function handleMessageForTest(msg: unknown): Promise<void> {
+  await handleMessage(msg as JsonRpcRequest)
 }
 
 async function handleMessage(msg: JsonRpcRequest): Promise<void> {
@@ -70,6 +79,9 @@ async function handleMessage(msg: JsonRpcRequest): Promise<void> {
     } else if (method === 'tools/list') {
       result = { tools: [TOOL] }
     } else if (method === 'tools/call') {
+      if (params?.name !== TOOL.name) {
+        throw new Error(`unknown tool: ${String(params?.name)}（可用工具: ${TOOL.name}）`)
+      }
       result = await callTool(params)
     } else if (method === 'ping') {
       result = {}
@@ -100,5 +112,8 @@ export async function runMcpServer(): Promise<void> {
       }
     }
   })
-  await new Promise<void>((resolve) => process.stdin.on('end', resolve))
+  await new Promise<void>((resolve) => {
+    process.stdin.on('end', resolve)
+    process.stdin.on('error', resolve)
+  })
 }

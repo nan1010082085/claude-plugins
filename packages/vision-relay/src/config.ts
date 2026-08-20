@@ -10,6 +10,7 @@ export interface VisionConfig {
   maxTokens: number
   prompt: string
   timeoutMs: number
+  maxImageBytes: number
 }
 
 export interface Config {
@@ -40,6 +41,7 @@ export function defaultConfig(): Config {
       maxTokens: 4096,
       prompt: DEFAULT_PROMPT,
       timeoutMs: 30000,
+      maxImageBytes: 15 * 1024 * 1024,
     },
     hook: { enabled: true, maxImages: 4 },
   }
