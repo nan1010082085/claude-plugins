@@ -43,7 +43,7 @@ Claude Code 粘贴图片以内容块进入消息，hook 只能拿到 prompt 文�
 
 两种协议，问答式配置：
 
-- **openai**：`POST {baseUrl}/chat/completions`，messages 含 `image_url`（data URI）。兼容 GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama 等一切 OpenAI 风格端点
+- **openai**：`POST {baseUrl}/chat/completions`，messages 含 `image_url`（data URI）。兼容一切 OpenAI 风格端点（不绑定厂商）
 - **anthropic**：`POST {baseUrl}/v1/messages`，base64 图片块，`x-api-key` + `anthropic-version` 头
 
 URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样用；以 `/v1` 结尾则补 `/messages`；否则拼接。maxTokens 默认 4096（描述宁长勿缺）。超时默认 30s。

@@ -50,7 +50,7 @@ prompt 中出现图片路径或 URL 时，vision-relay 自动识别并注入描�
 
 ### 支持的视觉模型
 
-任何 OpenAI 兼容端点（GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama…）或 Anthropic 原生协议，自定义 baseUrl + 模型名。
+支持 **OpenAI 兼容协议**与 **Anthropic 原生协议**，不绑定任何厂商——只要提供 baseUrl + 模型名 + API Key 即可。
 
 ## 工作原理
 

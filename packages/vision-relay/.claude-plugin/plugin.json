@@ -1,6 +1,6 @@
 {
   "name": "vision-relay",
-  "description": "为无视觉能力的编码模型中转图片理解。prompt 出现图片路径/URL 时自动识别注入，支持 GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama 等视觉模型。",
+  "description": "为无视觉能力的编码模型中转图片理解。prompt 出现图片路径/URL 时自动识别注入，支持 OpenAI / Anthropic 两种协议，不绑定厂商。",
   "version": "0.1.5",
   "author": { "name": "nan1010082085" },
   "homepage": "https://github.com/nan1010082085/claude-plugins/tree/main/packages/vision-relay",
