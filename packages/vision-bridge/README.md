@@ -1,37 +1,53 @@
 # vision-bridge
 
-为无视觉能力的编码模型代理图片理解。
-
-## 解决什么问题
-
-在 Claude Code / Codex 等编码 CLI 里使用不带视觉的编码模型（或视觉很弱的便宜模型）时，粘贴的图片模型"看不见"。vision-bridge 在本地起一个代理，把请求里的图片先交给配置的视觉模型识别成文字描述，再转发给编码模型。
+为无视觉能力的编码模型代理图片理解。**中转模式，无常驻进程**：你在 CLI 输入里提到图片路径或 URL，vision-bridge 用配置的视觉模型识别，把文字描述注入对话上下文。
 
 ## 快速开始
 
 ```bash
-npx vision-bridge init     # TUI 配置视觉模型
-npx vision-bridge start    # 启动本地代理（127.0.0.1:8787）
+npx vision-bridge init      # 问答式配置视觉模型 + 立即测试连接
+npx vision-bridge setup     # 自动接线到 Claude Code / Codex / opencode
 ```
 
-接入 Claude Code：
+## 三条注入通道
 
-```bash
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
-export ANTHROPIC_API_KEY=你的编码模型密钥   # 代理原样透传
-claude
+| 通道 | 终端 | 行为 |
+|------|------|------|
+| **hook** | Claude Code | prompt 里出现图片路径/URL 时自动识别，描述作为上下文注入（无需手动调用） |
+| **MCP 工具** | Claude Code / Codex / opencode | `vision_describe(path \| url, question?)`，agent 按需调用 |
+| **/vision 命令** | 三家 | `/vision <图片路径> <你的问题>`，提示词自定义 |
+
+示例（Claude Code，接好之后直接说）：
+
+```
+帮我看看 ./screenshots/error.png 这个报错是什么原因
 ```
 
-接入 Codex（`~/.codex/config.toml` 的 model provider 或 `OPENAI_BASE_URL`）同理。
+hook 自动识别图片 -> 描述进入上下文 -> 编码模型基于描述回答。
 
-## 支持的视觉模型
+## 视觉模型配置
 
-- OpenAI 兼容协议（GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama 等）：`type: "openai"`
-- Anthropic 原生协议：`type: "anthropic"`
+`vision-bridge init` 问答式配置，支持两种协议：
 
-## 配置
+- **openai**：一切 OpenAI 兼容端点（GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama…）
+- **anthropic**：Claude 原生协议
 
-`~/.config/vision-bridge/config.json`（详见 [docs/design.md](docs/design.md)）。
+配置文件：`~/.config/vision-bridge/config.json`（0600 权限）。
+
+## 命令
+
+| 命令 | 说明 |
+|------|------|
+| `init` | 问答式配置 + 测试连接 |
+| `setup [--all]` | 自动接线三终端（hook / MCP / 命令模板） |
+| `test` | 发测试图验证视觉模型连通 |
+| `doctor` | 检查配置与接线状态 |
+| `mcp` / `hook` | 内部命令，由终端拉起 |
+
+## 边界
+
+粘贴的**图片块**（而非路径/URL引用）无法被 hook 或 MCP 拦截（hook 只拿到 prompt 文本、MCP 需要模型先看见图片）。图片块拦截需要代理模式，见 [docs/design.md](docs/design.md) §9（预留，未实现）。
 
 ## 设计文档
 
-- [docs/design.md](docs/design.md) - 架构设计与测试方案
+[docs/design.md](docs/design.md)

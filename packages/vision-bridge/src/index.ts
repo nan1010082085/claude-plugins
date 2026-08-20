@@ -2,6 +2,12 @@
 import { createRequire } from 'node:module'
 import { Command } from 'commander'
 import pc from 'picocolors'
+import { loadConfig, validateConfig } from './config.js'
+import { hookMain } from './hook.js'
+import { runMcpServer } from './mcp.js'
+import { setupAllDetected, setupInteractive } from './setup.js'
+import { initWizard, testConnection } from './tui.js'
+import { doctor } from './doctor.js'
 
 const require = createRequire(import.meta.url)
 const { version, description } = require('../package.json') as {
@@ -18,37 +24,49 @@ program
 
 program
   .command('init')
-  .description('交互式初始化配置（视觉模型、端点、密钥）')
-  .action(() => {
-    console.log(pc.yellow('TODO(M1): TUI 配置向导，写入 ~/.config/vision-bridge/config.json'))
-  })
+  .description('问答式配置视觉模型（协议/URL/模型/密钥），可立即测试连接')
+  .action(() => initWizard())
 
 program
-  .command('start')
-  .description('启动本地代理服务器（默认 127.0.0.1:8787）')
-  .action(() => {
-    console.log(pc.yellow('TODO(M1): 代理服务器，先实现无图请求透传'))
-  })
+  .command('setup')
+  .description('自动接线到 Claude Code / Codex / opencode（hook + MCP + /vision 命令）')
+  .option('--all', '不询问，配置所有已检测到的终端')
+  .action((opts: { all?: boolean }) => (opts.all ? setupAllDetected() : setupInteractive()))
 
 program
   .command('test')
-  .description('用一张测试图验证视觉模型连通性')
-  .action(() => {
-    console.log(pc.yellow('TODO(M1): 发送测试图到配置的视觉模型并校验响应'))
+  .description('发送测试图验证视觉模型连通性')
+  .action(async () => {
+    try {
+      const { config, exists } = loadConfig()
+      if (!exists) {
+        console.log(pc.yellow('未找到配置，请先运行 vision-bridge init'))
+        return
+      }
+      const errs = validateConfig(config)
+      if (errs.length) {
+        console.log(pc.yellow(`配置不完整: ${errs.join('; ')}`))
+        return
+      }
+      await testConnection(config)
+    } catch {
+      process.exitCode = 1
+    }
   })
 
 program
   .command('doctor')
-  .description('检查 Claude Code / Codex 的环境变量接线是否指向本代理')
-  .action(() => {
-    console.log(pc.yellow('TODO(M2): 检查 ANTHROPIC_BASE_URL / OPENAI_BASE_URL 等'))
-  })
+  .description('检查配置完整性与三终端接线状态')
+  .action(() => doctor())
 
 program
-  .command('config')
-  .description('打开交互式配置编辑')
-  .action(() => {
-    console.log(pc.yellow('TODO(M4): TUI 配置编辑'))
-  })
+  .command('mcp', { hidden: true })
+  .description('stdio MCP server（由终端拉起，无需手动运行）')
+  .action(() => runMcpServer())
+
+program
+  .command('hook', { hidden: true })
+  .description('Claude Code UserPromptSubmit hook 处理器')
+  .action(() => hookMain())
 
 program.parseAsync(process.argv)
