@@ -1,0 +1,50 @@
+{
+  "name": "vision-bridge",
+  "version": "0.1.0",
+  "description": "为无视觉能力的编码模型代理图片理解：本地代理拦截请求中的图片，交给配置的视觉模型识别后再转发（支持 Claude Code / Codex 等）",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "vision-bridge": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "commander": "^14.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nan1010082085/claude-plugins.git",
+    "directory": "packages/vision-bridge"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "vision",
+    "proxy",
+    "image",
+    "llm"
+  ]
+}
