@@ -48,9 +48,9 @@ prompt 中出现图片路径或 URL 时，vision-relay 自动识别并注入描�
 | `/vision-config` | 配置视觉模型 |
 | `/vision-doctor` | 检查配置与接线状态 |
 
-### 支持的视觉模型
+### 支持的协议
 
-支持 **OpenAI 兼容协议**与 **Anthropic 原生协议**，不绑定任何厂商——只要提供 baseUrl + 模型名 + API Key 即可。
+**OpenAI / Anthropic 两种协议**，不绑定厂商——只要提供 baseUrl + 模型名 + API Key 即可。
 
 ## 工作原理
 

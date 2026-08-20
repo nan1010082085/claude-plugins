@@ -51,8 +51,8 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
     const parts = refs.map((ref, i) => {
       const r = results[i]!
       return r.status === 'fulfilled'
-        ? `[vision-relay 图片 #${i + 1}: ${ref.value}]（已识别，无需再调用 vision_describe）\n${r.value}`
-        : `[vision-relay 图片 #${i + 1}: ${ref.value}] 识别失败: ${(r.reason as Error).message}（可尝试用 vision_describe 工具重试）`
+        ? `[vision-relay 图片 #${i + 1}: ${ref.value}]\n${r.value}`
+        : `[vision-relay 图片 #${i + 1}: ${ref.value}] 识别失败: ${(r.reason as Error).message}`
     })
     return { additionalContext: parts.join('\n\n') }
   } catch {

@@ -9,7 +9,7 @@ const { version } = require('../package.json') as { version: string }
 const TOOL = {
   name: 'vision_describe',
   description:
-    '识别图片并返回详细文字描述。重要：如果你无法直接查看图片，凡是用户消息中出现图片路径或 URL，必须先调用本工具获取描述，再回答相关问题；严禁凭文件名或上下文猜测图片内容。参数：path（本地图片路径）或 url（图片地址），二选一；question（可选）针对图片的具体问题，如"这个报错的根因是什么"，描述会围绕问题展开。',
+    '识别图片并返回详细文字描述。当用户消息中出现图片路径或 URL 且你无法直接查看时，必须先调用本工具，严禁猜测图片内容。参数：path（本地路径）或 url（网络地址）二选一；question（可选）针对图片的具体问题。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -58,15 +58,10 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
       maxEdge: config.vision.maxImageEdge,
     })
     const text = await describeImage(config.vision, prepared, question)
-    return { content: [{ type: 'text', text: `[vision-relay 对 ${image.source} 的识别结果]\n${text}` }] }
+    return { content: [{ type: 'text', text }] }
   } catch (e) {
     return { content: [{ type: 'text', text: `[vision-relay] 错误: ${(e as Error).message}` }], isError: true }
   }
-}
-
-/** 导出供测试：处理单条 JSON-RPC 消息 */
-export async function handleMessageForTest(msg: unknown): Promise<void> {
-  await handleMessage(msg as JsonRpcRequest)
 }
 
 async function handleMessage(msg: JsonRpcRequest): Promise<void> {
@@ -120,4 +115,9 @@ export async function runMcpServer(): Promise<void> {
     process.stdin.on('end', resolve)
     process.stdin.on('error', resolve)
   })
+}
+
+/** 导出供测试：处理单条 JSON-RPC 消息 */
+export async function handleMessageForTest(msg: unknown): Promise<void> {
+  await handleMessage(msg as JsonRpcRequest)
 }

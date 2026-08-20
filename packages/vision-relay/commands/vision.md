@@ -4,8 +4,8 @@ description: 用视觉模型识别图片（vision-relay）
 用户请求：$ARGUMENTS
 
 执行规则：
-1. 你可能无法直接查看图片。回答中凡是涉及图片路径或 URL 的内容，必须先调用 vision_describe 工具获取描述，严禁凭文件名或上下文猜测图片内容。
-2. 如果参数中带具体问题，把问题作为 vision_describe 的 question 参数传入，让识别围绕问题展开。
-3. 拿到描述后结合描述回答；若描述不足以回答，换一个更具体的 question 再调用一次。
-4. 如果参数中没有图片路径或 URL，提醒用户提供，例如：/vision ./screenshots/error.png 这个报错怎么修
-5. 如果 vision_describe 工具调用失败且提示"配置不完整"，建议用户运行 `/vision-config` 配置视觉模型。
+1. 你无法查看图片。涉及图片路径或 URL 时，必须先调用 vision_describe 工具获取描述，严禁猜测。
+2. 把用户的疑问作为 vision_describe 的 question 参数传入，让识别围绕问题展开。
+3. 拿到描述后回答；描述不足则换更具体的 question 再调一次。
+4. 没有图片路径或 URL 时提醒用户提供：/vision ./error.png 这个报错怎么修
+5. 提示"配置不完整"时，运行 /vision-config 配置视觉模型。
