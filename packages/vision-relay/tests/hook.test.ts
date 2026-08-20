@@ -14,7 +14,7 @@ let cwd: string
 beforeEach(() => {
   cfgDir = mkdtempSync(join(tmpdir(), 'vb-hook-'))
   cwd = mkdtempSync(join(tmpdir(), 'vb-hook-cwd-'))
-  process.env.VISION_BRIDGE_CONFIG_DIR = cfgDir
+  process.env.VISION_RELAY_CONFIG_DIR = cfgDir
   const cfg = defaultConfig()
   cfg.vision.apiKey = 'sk-test'
   saveConfig(cfg)
@@ -28,7 +28,7 @@ function withKey(mod: Partial<ReturnType<typeof defaultConfig>>): ReturnType<typ
 }
 
 afterEach(() => {
-  delete process.env.VISION_BRIDGE_CONFIG_DIR
+  delete process.env.VISION_RELAY_CONFIG_DIR
 })
 
 describe('runClaudeCodeHook', () => {
@@ -36,7 +36,7 @@ describe('runClaudeCodeHook', () => {
     writeFileSync(join(cwd, 'shot.png'), 'x')
     const input = JSON.stringify({ prompt: '帮我看看 shot.png 这个报错', cwd })
     const { additionalContext } = await runClaudeCodeHook(input, cwd)
-    expect(additionalContext).toContain('[vision-bridge 图片 #1: shot.png]')
+    expect(additionalContext).toContain('[vision-relay 图片 #1: shot.png]')
     expect(additionalContext).toContain('TypeError: x is not a function')
     expect(describeImageMock).toHaveBeenCalledTimes(1)
   })

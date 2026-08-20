@@ -1,4 +1,4 @@
-# vision-bridge 设计与测试方案
+# vision-relay 设计与测试方案
 
 > 状态：v2 中转模式（按用户 2026-08-20 反馈修订：无常驻代理）。版本 0.1.0。
 
@@ -14,14 +14,14 @@
 用户在 CLI 输入（图片路径 / URL + 可选提示词）
    │
    ├─ Claude Code ──► UserPromptSubmit hook
-   │     Claude Code 每次提交 prompt 自动拉起 `vision-bridge hook`
+   │     Claude Code 每次提交 prompt 自动拉起 `vision-relay hook`
    │     hook 扫描 prompt 中的图片路径/URL → 识别 → additionalContext 注入上下文
    │
    ├─ Codex ──► MCP 工具 + /vision 自定义命令
    ├─ opencode ──► MCP 工具 + /vision 自定义命令
    │     agent 看到图片引用时调用 vision_describe 工具，描述作为 tool result 进入上下文
    ▼
-vision-bridge（一次性进程，零守护）
+vision-relay（一次性进程，零守护）
    读配置 → 读图/下载 → 调视觉模型 → 返回文字描述
 ```
 
@@ -29,8 +29,8 @@ vision-bridge（一次性进程，零守护）
 
 | 通道 | 终端 | 机制 | 触发 |
 |------|------|------|------|
-| hook | Claude Code | `~/.claude/settings.json` UserPromptSubmit → `vision-bridge hook` | prompt 文本含图片路径/URL 时自动注入 |
-| MCP 工具 | 三家都支持 | `vision-bridge mcp`（stdio JSON-RPC）→ `vision_describe` | agent 调用，支持 path/url + question |
+| hook | Claude Code | `~/.claude/settings.json` UserPromptSubmit → `vision-relay hook` | prompt 文本含图片路径/URL 时自动注入 |
+| MCP 工具 | 三家都支持 | `vision-relay mcp`（stdio JSON-RPC）→ `vision_describe` | agent 调用，支持 path/url + question |
 | 命令 | Claude Code / Codex / opencode | `/vision <图片> <提示词>` 自定义命令模板 | 用户显式发起，提示词自定义 |
 
 ### 边界：粘贴的图片块
@@ -48,7 +48,7 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 ## 4. 配置
 
-`~/.config/vision-bridge/config.json`（XDG，写入 0600；`VISION_BRIDGE_CONFIG_DIR` 可覆盖用于测试）：
+`~/.config/vision-relay/config.json`（XDG，写入 0600；`VISION_RELAY_CONFIG_DIR` 可覆盖用于测试）：
 
 ```json
 {
@@ -71,26 +71,26 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 | 命令 | 功能 |
 |------|------|
-| `vision-bridge init` | 问答式 TUI：协议 → baseUrl → 模型 → 密钥 → maxTokens → 立即测试连接 → 保存 → 顺势 setup |
-| `vision-bridge setup` | 自动接线：检测 claude/codex/opencode，multiselect 选择，写入各终端配置 |
-| `vision-bridge test` | 发 1x1 测试图到视觉模型，验证连通/鉴权/响应非空 |
-| `vision-bridge doctor` | 配置完整性 + 三终端接线状态 + vision-bridge 命令可解析性 |
-| `vision-bridge mcp` | stdio MCP server（被终端拉起，非守护） |
-| `vision-bridge hook` | Claude Code UserPromptSubmit 处理器（读 stdin JSON） |
+| `vision-relay init` | 问答式 TUI：协议 → baseUrl → 模型 → 密钥 → maxTokens → 立即测试连接 → 保存 → 顺势 setup |
+| `vision-relay setup` | 自动接线：检测 claude/codex/opencode，multiselect 选择，写入各终端配置 |
+| `vision-relay test` | 发 1x1 测试图到视觉模型，验证连通/鉴权/响应非空 |
+| `vision-relay doctor` | 配置完整性 + 三终端接线状态 + vision-relay 命令可解析性 |
+| `vision-relay mcp` | stdio MCP server（被终端拉起，非守护） |
+| `vision-relay hook` | Claude Code UserPromptSubmit 处理器（读 stdin JSON） |
 
 ### setup 自动接线明细
 
 | 终端 | 写入 |
 |------|------|
 | Claude Code | `~/.claude/settings.json` hooks.UserPromptSubmit；`claude mcp add -s user`；`~/.claude/commands/vision.md` |
-| Codex | `~/.codex/config.toml` `[mcp_servers.vision-bridge]`；`~/.codex/prompts/vision.md` |
+| Codex | `~/.codex/config.toml` `[mcp_servers.vision-relay]`；`~/.codex/prompts/vision.md` |
 | opencode | `~/.config/opencode/opencode.json` mcp.local；`~/.config/opencode/command/vision.md` |
 
-若全局无 `vision-bridge` 命令，自动改用 `npx -y vision-bridge mcp`。
+若全局无 `vision-relay` 命令，自动改用 `npx -y vision-relay mcp`。
 
 ## 6. 失败策略
 
-- hook：单图失败不阻塞——注入 `[vision-bridge 图片 #N 识别失败: 原因]`，exit 0
+- hook：单图失败不阻塞——注入 `[vision-relay 图片 #N 识别失败: 原因]`，exit 0
 - MCP：返回 `isError: true` 的 tool result，由 agent 决定后续
 - 多图（hook）：默认上限 4 张，可配 `hook.maxImages`
 
@@ -106,13 +106,13 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 ### 集成 / 冒烟
 
-- 本地假视觉服务（node:http 固定响应）+ 临时配置目录：`vision-bridge test` 端到端通过
+- 本地假视觉服务（node:http 固定响应）+ 临时配置目录：`vision-relay test` 端到端通过
 - MCP：管道喂 initialize/tools/list/tools/call JSON，断言响应
 
 ### E2E 手册（docs/e2e.md）
 
-- [ ] `vision-bridge init` 全流程（含测试连接）
-- [ ] `vision-bridge setup --all` 三终端接线，`doctor` 全绿
+- [ ] `vision-relay init` 全流程（含测试连接）
+- [ ] `vision-relay setup --all` 三终端接线，`doctor` 全绿
 - [ ] Claude Code：prompt 提到 `./screenshots/error.png` → 自动注入描述
 - [ ] 三终端 `/vision <路径> <问题>` 或 agent 主动调 vision_describe
 - [ ] 视觉端点不可达时 hook 不阻塞会话

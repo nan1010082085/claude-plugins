@@ -38,7 +38,7 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
   const question = typeof args.question === 'string' ? args.question : undefined
   if (!path && !url) {
     return {
-      content: [{ type: 'text', text: '[vision-bridge] 错误: 必须提供 path 或 url 参数' }],
+      content: [{ type: 'text', text: '[vision-relay] 错误: 必须提供 path 或 url 参数' }],
       isError: true,
     }
   }
@@ -46,13 +46,13 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
     const { config } = loadConfig()
     const errs = validateConfig(config)
     if (errs.length) {
-      return { content: [{ type: 'text', text: `[vision-bridge] 配置不完整: ${errs.join('; ')}` }], isError: true }
+      return { content: [{ type: 'text', text: `[vision-relay] 配置不完整: ${errs.join('; ')}` }], isError: true }
     }
     const image = await readImageRef({ kind: url ? 'url' : 'path', value: url || path! }, process.cwd())
     const text = await describeImage(config.vision, image, question)
-    return { content: [{ type: 'text', text: `[vision-bridge 对 ${image.source} 的识别结果]\n${text}` }] }
+    return { content: [{ type: 'text', text: `[vision-relay 对 ${image.source} 的识别结果]\n${text}` }] }
   } catch (e) {
-    return { content: [{ type: 'text', text: `[vision-bridge] 错误: ${(e as Error).message}` }], isError: true }
+    return { content: [{ type: 'text', text: `[vision-relay] 错误: ${(e as Error).message}` }], isError: true }
   }
 }
 
@@ -65,7 +65,7 @@ async function handleMessage(msg: JsonRpcRequest): Promise<void> {
       result = {
         protocolVersion: typeof params?.protocolVersion === 'string' ? params.protocolVersion : '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'vision-bridge', version },
+        serverInfo: { name: 'vision-relay', version },
       }
     } else if (method === 'tools/list') {
       result = { tools: [TOOL] }

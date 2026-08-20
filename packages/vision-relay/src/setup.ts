@@ -12,11 +12,11 @@ export interface ResolvedCommand {
   args: string[]
 }
 
-/** 优先全局 vision-bridge，不可用则回退 npx */
+/** 优先全局 vision-relay，不可用则回退 npx */
 export function resolveCommand(sub: string): ResolvedCommand {
-  const ok = spawnSync('vision-bridge', ['--version'], { shell: process.platform === 'win32' })
-  if (ok.status === 0) return { command: 'vision-bridge', args: [sub] }
-  return { command: 'npx', args: ['-y', 'vision-bridge', sub] }
+  const ok = spawnSync('vision-relay', ['--version'], { shell: process.platform === 'win32' })
+  if (ok.status === 0) return { command: 'vision-relay', args: [sub] }
+  return { command: 'npx', args: ['-y', 'vision-relay', sub] }
 }
 
 function readJson(path: string): Record<string, unknown> {
@@ -41,7 +41,7 @@ function writeIfAbsent(path: string, content: string): boolean {
 }
 
 const VISION_COMMAND_MD = `---
-description: 用视觉模型识别图片（vision-bridge）
+description: 用视觉模型识别图片（vision-relay）
 ---
 请使用 vision_describe 工具识别图片：$ARGUMENTS
 
@@ -58,7 +58,7 @@ export function setupClaudeCode(): string[] {
   const hooks = (settings.hooks ?? {}) as Record<string, unknown>
   const hookCmd = resolveCommand('hook')
   const entries = Array.isArray(hooks['UserPromptSubmit']) ? hooks['UserPromptSubmit'] : []
-  const already = JSON.stringify(entries).includes('vision-bridge')
+  const already = JSON.stringify(entries).includes('vision-relay')
   if (!already) {
     hooks['UserPromptSubmit'] = [
       ...entries,
@@ -73,11 +73,11 @@ export function setupClaudeCode(): string[] {
   const mcp = resolveCommand('mcp')
   const claude = spawnSync(
     'claude',
-    ['mcp', 'add', '-s', 'user', 'vision-bridge', '--', mcp.command, ...mcp.args],
+    ['mcp', 'add', '-s', 'user', 'vision-relay', '--', mcp.command, ...mcp.args],
     { encoding: 'utf8', shell: process.platform === 'win32' },
   )
   if (claude.status === 0) log.push('MCP server -> claude mcp (user 作用域)')
-  else log.push(`MCP 注册: 请手动执行 claude mcp add -s user vision-bridge -- ${mcp.command} ${mcp.args.join(' ')}`)
+  else log.push(`MCP 注册: 请手动执行 claude mcp add -s user vision-relay -- ${mcp.command} ${mcp.args.join(' ')}`)
 
   if (writeIfAbsent(join(homedir(), '.claude', 'commands', 'vision.md'), VISION_COMMAND_MD)) {
     log.push('/vision 命令 -> ~/.claude/commands/vision.md')
@@ -92,9 +92,9 @@ export function setupCodex(): string[] {
   const configPath = join(homedir(), '.codex', 'config.toml')
   const mcp = resolveCommand('mcp')
   const existing = existsSync(configPath) ? readFileSync(configPath, 'utf8') : ''
-  if (!existing.includes('[mcp_servers.vision-bridge]')) {
+  if (!existing.includes('[mcp_servers.vision-relay]')) {
     mkdirSync(dirname(configPath), { recursive: true })
-    const section = `\n[mcp_servers.vision-bridge]\ncommand = "${mcp.command}"\nargs = [${mcp.args.map((a) => `"${a}"`).join(', ')}]\n`
+    const section = `\n[mcp_servers.vision-relay]\ncommand = "${mcp.command}"\nargs = [${mcp.args.map((a) => `"${a}"`).join(', ')}]\n`
     writeFileSync(configPath, existing + (existing.endsWith('\n') || !existing ? '' : '\n') + section)
     log.push(`MCP server -> ${configPath}`)
   }
@@ -112,8 +112,8 @@ export function setupOpencode(): string[] {
   const config = readJson(configPath)
   const mcp = resolveCommand('mcp')
   const mcpServers = (config.mcp ?? {}) as Record<string, unknown>
-  if (!('vision-bridge' in mcpServers)) {
-    mcpServers['vision-bridge'] = { type: 'local', command: [mcp.command, ...mcp.args], enabled: true }
+  if (!('vision-relay' in mcpServers)) {
+    mcpServers['vision-relay'] = { type: 'local', command: [mcp.command, ...mcp.args], enabled: true }
     config.mcp = mcpServers
     writeJson(configPath, config)
     log.push(`MCP server -> ${configPath}`)
@@ -153,7 +153,7 @@ export function applySetup(terminals: TerminalId[]): string[] {
 }
 
 export async function setupInteractive(): Promise<void> {
-  p.intro('vision-bridge 终端接线')
+  p.intro('vision-relay 终端接线')
   const detected = detectTerminals()
   if (!detected.length) {
     p.log.warn('未检测到 claude / codex / opencode，请确认已安装')

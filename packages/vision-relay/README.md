@@ -1,12 +1,12 @@
-# vision-bridge
+# vision-relay
 
-为无视觉能力的编码模型代理图片理解。**中转模式，无常驻进程**：你在 CLI 输入里提到图片路径或 URL，vision-bridge 用配置的视觉模型识别，把文字描述注入对话上下文。
+为无视觉能力的编码模型代理图片理解。**中转模式，无常驻进程**：你在 CLI 输入里提到图片路径或 URL，vision-relay 用配置的视觉模型识别，把文字描述注入对话上下文。
 
 ## 快速开始
 
 ```bash
-npx vision-bridge init      # 问答式配置视觉模型 + 立即测试连接
-npx vision-bridge setup     # 自动接线到 Claude Code / Codex / opencode
+npx vision-relay init      # 问答式配置视觉模型 + 立即测试连接
+npx vision-relay setup     # 自动接线到 Claude Code / Codex / opencode
 ```
 
 ## 三条注入通道
@@ -27,12 +27,12 @@ hook 自动识别图片 -> 描述进入上下文 -> 编码模型基于描述回�
 
 ## 视觉模型配置
 
-`vision-bridge init` 问答式配置，支持两种协议：
+`vision-relay init` 问答式配置，支持两种协议：
 
 - **openai**：一切 OpenAI 兼容端点（GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama…）
 - **anthropic**：Claude 原生协议
 
-配置文件：`~/.config/vision-bridge/config.json`（0600 权限）。
+配置文件：`~/.config/vision-relay/config.json`（0600 权限）。
 
 ## 命令
 

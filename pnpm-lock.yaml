@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  packages/vision-bridge:
+  packages/vision-relay:
     dependencies:
       '@clack/prompts':
         specifier: ^0.11.0

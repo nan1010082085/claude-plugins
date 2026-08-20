@@ -8,14 +8,14 @@
 
 | 插件 | npm 包 | 功能 | 版本 |
 |------|--------|------|------|
-| vision-bridge | `vision-bridge` | 为无视觉能力的编码模型代理图片理解（本地代理） | 0.1.0 (开发中) |
+| vision-relay | `vision-relay` | 为无视觉能力的编码模型代理图片理解（本地代理） | 0.1.0 (开发中) |
 
 ## 结构
 
 ```
 claude-plugins/
 ├── packages/
-│   └── vision-bridge/      # 图片理解代理
+│   └── vision-relay/      # 图片理解代理
 ├── package.json            # 根目录，private，不发布
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json

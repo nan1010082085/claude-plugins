@@ -19,7 +19,7 @@ export async function testConnection(config: Config): Promise<void> {
 }
 
 export async function initWizard(): Promise<void> {
-  p.intro('vision-bridge 配置向导')
+  p.intro('vision-relay 配置向导')
   const base = defaultConfig()
 
   const type = await p.select({
@@ -94,7 +94,7 @@ export async function initWizard(): Promise<void> {
   p.log.success(`配置已保存: ${path}（权限 600）`)
 
   const doSetup = await p.confirm({ message: '现在自动接线到终端（Claude Code / Codex / opencode）？', initialValue: true })
-  if (p.isCancel(doSetup)) return p.outro('已保存，之后可运行 vision-bridge setup')
+  if (p.isCancel(doSetup)) return p.outro('已保存，之后可运行 vision-relay setup')
   if (doSetup) await setupInteractive()
-  else p.outro('之后可运行 vision-bridge setup 接线')
+  else p.outro('之后可运行 vision-relay setup 接线')
 }

@@ -1,11 +1,11 @@
 {
-  "name": "vision-bridge",
+  "name": "vision-relay",
   "version": "0.1.0",
   "description": "为无视觉能力的编码模型代理图片理解：本地代理拦截请求中的图片，交给配置的视觉模型识别后再转发（支持 Claude Code / Codex 等）",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "vision-bridge": "dist/index.js"
+    "vision-relay": "dist/index.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,7 +37,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nan1010082085/claude-plugins.git",
-    "directory": "packages/vision-bridge"
+    "directory": "packages/vision-relay"
   },
   "keywords": [
     "claude-code",

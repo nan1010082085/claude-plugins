@@ -24,7 +24,7 @@ describe('validateConfig', () => {
 describe('load/save', () => {
   it('保存后加载往返一致且权限 600', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vb-cfg-'))
-    process.env.VISION_BRIDGE_CONFIG_DIR = dir
+    process.env.VISION_RELAY_CONFIG_DIR = dir
     try {
       saveConfig(base)
       expect(statSync(join(dir, 'config.json')).mode & 0o777).toBe(0o600)
@@ -32,17 +32,17 @@ describe('load/save', () => {
       expect(exists).toBe(true)
       expect(config).toEqual(base)
     } finally {
-      delete process.env.VISION_BRIDGE_CONFIG_DIR
+      delete process.env.VISION_RELAY_CONFIG_DIR
     }
   })
   it('不存在时返回默认值', () => {
-    process.env.VISION_BRIDGE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'vb-cfg-'))
+    process.env.VISION_RELAY_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'vb-cfg-'))
     try {
       const { config, exists } = loadConfig()
       expect(exists).toBe(false)
       expect(config).toEqual(defaultConfig())
     } finally {
-      delete process.env.VISION_BRIDGE_CONFIG_DIR
+      delete process.env.VISION_RELAY_CONFIG_DIR
     }
   })
 })

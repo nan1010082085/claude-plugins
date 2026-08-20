@@ -36,9 +36,9 @@ export function defaultConfig(): Config {
 }
 
 export function configDir(): string {
-  if (process.env.VISION_BRIDGE_CONFIG_DIR) return process.env.VISION_BRIDGE_CONFIG_DIR
+  if (process.env.VISION_RELAY_CONFIG_DIR) return process.env.VISION_RELAY_CONFIG_DIR
   const xdg = process.env.XDG_CONFIG_HOME
-  return join(xdg || join(homedir(), '.config'), 'vision-bridge')
+  return join(xdg || join(homedir(), '.config'), 'vision-relay')
 }
 
 export function configPath(): string {

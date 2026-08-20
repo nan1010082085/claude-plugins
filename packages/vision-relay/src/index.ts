@@ -18,7 +18,7 @@ const { version, description } = require('../package.json') as {
 const program = new Command()
 
 program
-  .name('vision-bridge')
+  .name('vision-relay')
   .version(version)
   .description(description)
 
@@ -40,7 +40,7 @@ program
     try {
       const { config, exists } = loadConfig()
       if (!exists) {
-        console.log(pc.yellow('未找到配置，请先运行 vision-bridge init'))
+        console.log(pc.yellow('未找到配置，请先运行 vision-relay init'))
         return
       }
       const errs = validateConfig(config)
