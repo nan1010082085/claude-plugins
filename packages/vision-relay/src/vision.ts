@@ -65,16 +65,9 @@ export function extractText(json: unknown, type: 'openai' | 'anthropic'): string
   return blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('\n')
 }
 
-export class VisionError extends Error {
-  constructor(
-    message: string,
-    public readonly status?: number,
-    public readonly body?: string,
-  ) {
-    super(message)
-    this.name = 'VisionError'
-  }
-}
+/** 构造视觉调用错误（普通对象，函数式风格，无 class） */
+export const visionError = (message: string, status?: number, body?: string): Error =>
+  Object.assign(new Error(message), { name: 'VisionError', status, body })
 
 /** 调视觉模型识别一张图片，返回文字描述 */
 export async function describeImage(
@@ -106,16 +99,16 @@ export async function describeImage(
       signal: controller.signal,
     })
   } catch (e) {
-    throw new VisionError(
+    throw visionError(
       `连接视觉模型失败: ${(e as Error).message}${(e as Error).name === 'AbortError' ? '（超时）' : ''}`,
     )
   } finally {
     clearTimeout(timer)
   }
   if (!res.ok) {
-    throw new VisionError(`视觉模型返回 HTTP ${res.status}`, res.status, (await res.text()).slice(0, 500))
+    throw visionError(`视觉模型返回 HTTP ${res.status}`, res.status, (await res.text()).slice(0, 500))
   }
   const text = extractText(await res.json(), cfg.type)
-  if (!text.trim()) throw new VisionError('视觉模型返回了空描述')
+  if (!text.trim()) throw visionError('视觉模型返回了空描述')
   return text
 }

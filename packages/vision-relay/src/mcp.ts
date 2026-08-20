@@ -9,7 +9,7 @@ const { version } = require('../package.json') as { version: string }
 const TOOL = {
   name: 'vision_describe',
   description:
-    '用视觉模型识别图片并返回详细描述。path 为本地图片路径，url 为图片地址，二者提供其一；question 为可选的针对图片的问题（如"这个报错是什么原因"）。适用于无视觉能力的模型需要理解图片的场景。',
+    '识别图片并返回详细文字描述。重要：如果你无法直接查看图片，凡是用户消息中出现图片路径或 URL，必须先调用本工具获取描述，再回答相关问题；严禁凭文件名或上下文猜测图片内容。参数：path（本地图片路径）或 url（图片地址），二选一；question（可选）针对图片的具体问题，如"这个报错的根因是什么"，描述会围绕问题展开。',
   inputSchema: {
     type: 'object',
     properties: {

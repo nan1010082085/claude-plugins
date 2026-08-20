@@ -1,0 +1,10 @@
+{
+  "name": "vision-relay",
+  "description": "为无视觉能力的编码模型中转图片理解：prompt 提到图片路径/URL 时自动识别注入（hook），并提供 vision_describe MCP 工具与 /vision 命令",
+  "version": "0.1.1",
+  "author": { "name": "nan1010082085" },
+  "homepage": "https://github.com/nan1010082085/claude-plugins/tree/main/packages/vision-relay",
+  "repository": "https://github.com/nan1010082085/claude-plugins",
+  "license": "MIT",
+  "keywords": ["vision", "image", "mcp", "hook", "claude-code"]
+}

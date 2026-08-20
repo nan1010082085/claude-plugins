@@ -9,6 +9,15 @@ npx vision-relay init      # 问答式配置视觉模型 + 立即测试连接
 npx vision-relay setup     # 自动接线到 Claude Code / Codex / opencode
 ```
 
+### 作为 Claude Code 插件安装（npm 与 plugin 二选一）
+
+```bash
+/plugin marketplace add nan1010082085/claude-plugins
+/plugin install vision-relay@claude-plugins
+```
+
+插件自带 hook（prompt 提到图片路径自动识别）、`vision_describe` MCP 工具和 `/vision` 命令，装完运行一次 `npx vision-relay init` 配置视觉模型即可。
+
 ## 三条注入通道
 
 | 通道 | 终端 | 行为 |

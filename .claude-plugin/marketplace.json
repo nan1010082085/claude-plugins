@@ -1,0 +1,12 @@
+{
+  "name": "claude-plugins",
+  "owner": { "name": "nan1010082085" },
+  "plugins": [
+    {
+      "name": "vision-relay",
+      "source": "./packages/vision-relay",
+      "description": "为无视觉能力的编码模型中转图片理解（hook 自动注入 + vision_describe MCP 工具 + /vision 命令）",
+      "version": "0.1.1"
+    }
+  ]
+}
