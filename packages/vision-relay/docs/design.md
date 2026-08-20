@@ -1,6 +1,8 @@
 # vision-relay 设计与测试方案
 
-> 状态：v2 中转模式（按用户 2026-08-20 反馈修订：无常驻代理）。版本 0.1.0。
+> 状态：**v0.1.5 开发完成，已发布 npm，已在真实 Claude Code 环境验证通过。**
+>
+> 2026-08-20 从零开发到发布，经历 6 个版本迭代（0.1.0 → 0.1.5）。
 
 ## 1. 问题
 
@@ -22,7 +24,7 @@
    │     agent 看到图片引用时调用 vision_describe 工具，描述作为 tool result 进入上下文
    ▼
 vision-relay（一次性进程，零守护）
-   读配置 → 读图/下载 → 调视觉模型 → 返回文字描述
+   读配置 → 读图/下载 → 超限自动压缩 → 调视觉模型 → 返回文字描述
 ```
 
 ### 三条注入通道
@@ -54,12 +56,15 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 {
   "vision": {
     "type": "openai",
-    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "baseUrl": "https://your-vision-endpoint/v1",
     "apiKey": "…",
-    "model": "glm-4v-plus",
+    "model": "your-vision-model",
     "maxTokens": 4096,
-    "prompt": "（默认：详尽描述；UI 截图转录文字；图表提取数据；报错图完整转录）",
-    "timeoutMs": 30000
+    "prompt": "（默认结构化描述：图片类型/核心内容/详细描述/编码助手需关注）",
+    "timeoutMs": 30000,
+    "targetImageBytes": 5242880,
+    "maxImageEdge": 8000,
+    "maxImageBytes": 104857600
   },
   "hook": { "enabled": true, "maxImages": 4 }
 }
@@ -81,7 +86,6 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 ### 防"抢跑"设计（避免编码模型不调工具就猜图）
 
-
 三处文案互相配合，把编码模型的行为约束成"先识别、后回答"：
 
 | 位置 | 约束 |
@@ -92,63 +96,83 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 默认识别 prompt 为结构化输出（图片类型 / 核心内容 / 详细描述 / 编码助手需关注），报错截图要求逐字全文转录含错误码与行号。
 
-## 5. CLI
+## 5. CLI 与斜杠命令
 
 | 命令 | 功能 |
 |------|------|
 | `vision-relay init` | 问答式 TUI：协议 → baseUrl → 模型 → 密钥 → maxTokens → 立即测试连接 → 保存 → 顺势 setup |
 | `vision-relay setup` | 自动接线：检测 claude/codex/opencode，multiselect 选择，写入各终端配置 |
 | `vision-relay test` | 发 1x1 测试图到视觉模型，验证连通/鉴权/响应非空 |
-| `vision-relay doctor` | 配置完整性 + 三终端接线状态 + vision-relay 命令可解析性 |
+| `vision-relay doctor` | 配置完整性 + 三终端接线状态 |
 | `vision-relay mcp` | stdio MCP server（被终端拉起，非守护） |
 | `vision-relay hook` | Claude Code UserPromptSubmit 处理器（读 stdin JSON） |
+
+### Claude CLI 斜杠命令
+
+| 命令 | 说明 |
+|------|------|
+| `/vision <图片路径> <问题>` | 识别图片，针对问题返回描述 |
+| `/vision-config` | 引导配置视觉模型（支持 npx 兜底） |
+| `/vision-doctor` | 诊断配置与接线状态 |
 
 ### setup 自动接线明细
 
 | 终端 | 写入 |
 |------|------|
-| Claude Code | `~/.claude/settings.json` hooks.UserPromptSubmit；`claude mcp add -s user`；`~/.claude/commands/vision.md` |
+| Claude Code | `~/.claude/settings.json` hooks.UserPromptSubmit；`claude mcp add -s user`；`~/.claude/commands/vision*.md` |
 | Codex | `~/.codex/config.toml` `[mcp_servers.vision-relay]`；`~/.codex/prompts/vision.md` |
 | opencode | `~/.config/opencode/opencode.json` mcp.local；`~/.config/opencode/command/vision.md` |
 
-若全局无 `vision-relay` 命令，自动改用 `npx -y vision-relay mcp`。
+若全局无 `vision-relay` 命令，自动改用 `npx -y vision-relay`。
 
 ## 6. 失败策略
 
-- hook：单图失败不阻塞——注入 `[vision-relay 图片 #N 识别失败: 原因]`，exit 0
+- hook：**永不崩溃**——全局 try/catch 兜底，任何内部错误静默降级返回 null
+- hook 单图失败不阻塞——注入失败提示 + 可用工具重试，exit 0
+- hook 多图**并行**识别（Promise.allSettled），总耗时 = 最慢一张，不超过 hook 超时
 - MCP：返回 `isError: true` 的 tool result，由 agent 决定后续
+- MCP 工具名校验：未知工具名返回 JSON-RPC 错误
 - 多图（hook）：默认上限 4 张，可配 `hook.maxImages`
 
-## 7. 测试方案
+## 7. 测试
 
-### 单元（Vitest，mock fetch）
+### 单元测试（47 例，Vitest）
 
-- 图片引用提取：绝对/相对/~ 路径、http(s) URL、多图、去重、误报过滤（路径必须真实存在）
-- mediaType 映射；URL 规整（openaiUrl/anthropicUrl 各分支）
-- 请求体构造：openai data URI / anthropic base64 块；question 覆盖默认 prompt
-- 响应文本提取：两种协议的嵌套结构
-- 配置：默认值合并、校验、读写往返、0600
+| 模块 | 覆盖 |
+|------|------|
+| images | 图片引用提取（路径/URL/去重/中文尾部标点/裸文件名存在性过滤）、mediaType 映射、pngDimensions 免解码探测 |
+| config | 默认值合并、校验、读写往返、0600、新字段校验 |
+| vision | URL 规整（openai/anthropic 各分支）、请求体构造（data URI / base64 / question 覆盖）、响应提取、HTTP 错误/空描述 |
+| hook | 正常路径、无图、单图失败、禁用、maxImages 截断、非 JSON 输入、**损坏配置不崩**、**多图并行**、**单图失败隔离** |
+| mcp | 工具名校验、tools/list、缺参数 isError、路径不存在 isError |
+| prepare | 小图透传一致性、大图压缩变小、长边等比缩小、svg 不阻断、硬上限拒绝文案 |
 
-### 集成 / 冒烟
+### 集成冒烟
 
-- 本地假视觉服务（node:http 固定响应）+ 临时配置目录：`vision-relay test` 端到端通过
-- MCP：管道喂 initialize/tools/list/tools/call JSON，断言响应
+- 本地假视觉服务（node:http）：并行计时验证（2 张 800ms 图总耗时 0.92s < 串行 1.6s）
+- 损坏配置静默 exit 0
+- 错误工具名返回 JSON-RPC error
 
-### E2E 手册（docs/e2e.md）
+### 真模型回归（mimo-v2.5 / token-plan）
 
-- [ ] `vision-relay init` 全流程（含测试连接）
-- [ ] `vision-relay setup --all` 三终端接线，`doctor` 全绿
-- [ ] Claude Code：prompt 提到 `./screenshots/error.png` → 自动注入描述
-- [ ] 三终端 `/vision <路径> <问题>` 或 agent 主动调 vision_describe
-- [ ] 视觉端点不可达时 hook 不阻塞会话
+- test openai ✓ / anthropic ✓
+- hook 真实截图（Figma 页面 452KB）→ 结构化描述 1400+ 字符 ✓
+- MCP openai（图标设计风格）✓ / anthropic（图标配色）✓
+- 真端到端：claude -p 无头会话编码模型 glm-5.2 自主调用 vision_describe 工具 ✓
+
+### 安全检查
+
+- `.env.local`（测试凭证）未入 npm 包 ✓
+- 配置文件 0600 权限 ✓
+- API Key 全链路不出现在日志/输出 ✓
 
 ## 8. 里程碑
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| M1 | 配置 + 视觉客户端（两协议）+ TUI init/test | 本版本 |
-| M2 | MCP server + Claude Code hook + 三终端 setup + doctor | 本版本 |
-| M3 | E2E 手册验证 + npm 发布 | 进行中 |
+| M1 | 配置 + 视觉客户端（两协议）+ TUI init/test | ✅ 完成 |
+| M2 | MCP server + Claude Code hook + 三终端 setup + doctor | ✅ 完成 |
+| M3 | 防抢跑文案 + 大图自动压缩 + Claude Code plugin 打包 + 斜杠命令 + 真模型 E2E | ✅ 完成 |
 | M4+ | 代理模式（图片块拦截）、描述缓存、多视觉模型路由、Web UI | 按需 |
 
 ## 9. 代理模式（预留，未实现）
