@@ -23,10 +23,10 @@ export async function initWizard(): Promise<void> {
   const base = defaultConfig()
 
   const type = await p.select({
-    message: '视觉模型协议',
+    message: '协议类型',
     options: [
-      { value: 'openai' as const, label: 'OpenAI 兼容', hint: 'GLM-4V / Qwen-VL / SiliconFlow / OpenRouter / Ollama…' },
-      { value: 'anthropic' as const, label: 'Anthropic', hint: 'Claude 原生协议' },
+      { value: 'openai' as const, label: 'OpenAI' },
+      { value: 'anthropic' as const, label: 'Anthropic' },
     ],
   })
   if (p.isCancel(type)) return p.cancel('已取消')
@@ -54,13 +54,6 @@ export async function initWizard(): Promise<void> {
   const apiKey = await p.password({ message: 'API Key' })
   if (p.isCancel(apiKey)) return p.cancel('已取消')
 
-  const maxTokens = await p.text({
-    message: 'maxTokens（描述宁长勿缺）',
-    placeholder: '4096',
-    defaultValue: '4096',
-  })
-  if (p.isCancel(maxTokens)) return p.cancel('已取消')
-
   const config: Config = {
     vision: {
       ...base.vision,
@@ -68,7 +61,6 @@ export async function initWizard(): Promise<void> {
       baseUrl: String(baseUrl),
       model: String(model),
       apiKey: String(apiKey),
-      maxTokens: Number(maxTokens) || 4096,
     },
     hook: base.hook,
   }
