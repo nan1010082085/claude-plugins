@@ -1,6 +1,6 @@
 {
   "name": "vision-relay",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "为无视觉能力的编码模型代理图片理解：本地代理拦截请求中的图片，交给配置的视觉模型识别后再转发（支持 Claude Code / Codex 等）",
   "type": "module",
   "license": "MIT",

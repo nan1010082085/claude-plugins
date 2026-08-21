@@ -2,7 +2,7 @@
 
 **为无视觉能力的编码模型中转图片理解。**
 
-当你的编码模型（DeepSeek、GLM、Qwen 等）无法看图时，vision-relay 用你配置的视觉模型识别图片，把文字描述注入对话，编码模型就能基于描述回答图片相关问题。
+当你的编码模型（DeepSeek、GLM、Qwen 等）无法看图时，vision-relay 用你配置的视觉模型识别图片，把文字描述注入对话，编码模型就能基于描述回答图片相关问题。支持 Claude Code / Codex / opencode / Cursor。
 
 ## 安装
 
@@ -74,8 +74,8 @@ prompt 中出现图片路径或 URL 时，vision-relay 自动识别并注入描�
 你的 prompt（含图片路径）
   │
   ├─ Claude Code hook：自动识别，描述注入上下文（无需手动调用）
-  ├─ MCP 工具：vision_describe，编码模型按需调用
-  └─ /vision 命令：显式触发
+  ├─ MCP 工具：vision_describe，编码模型按需调用（Codex / opencode / Cursor 的主通道）
+  └─ /vision 命令：显式触发（Claude Code / Codex / opencode）
   │
   ▼
 vision-relay 调配置的视觉模型识别图片
@@ -83,6 +83,8 @@ vision-relay 调配置的视觉模型识别图片
   ▼
 文字描述进入对话上下文，编码模型基于描述回答
 ```
+
+> **Cursor**：无 UserPromptSubmit hook，仅 MCP 通道（`~/.cursor/mcp.json`）。
 
 无常驻进程，不占端口，每次由终端按需拉起。
 

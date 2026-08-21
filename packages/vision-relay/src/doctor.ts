@@ -23,6 +23,15 @@ function isWired(t: TerminalId): boolean {
     const hasHook = existsSync(hooks) && readFileSync(hooks, 'utf8').includes('vision-relay')
     return hasMcp && hasHook
   }
+  if (t === 'cursor') {
+    const json = join(homedir(), '.cursor', 'mcp.json')
+    if (!existsSync(json)) return false
+    try {
+      return 'vision-relay' in ((JSON.parse(readFileSync(json, 'utf8')).mcpServers ?? {}) as object)
+    } catch {
+      return false
+    }
+  }
   const json = join(homedir(), '.config', 'opencode', 'opencode.json')
   if (!existsSync(json)) return false
   try {
@@ -49,7 +58,7 @@ export function doctor(): void {
 
   console.log(pc.bold('\n终端接线'))
   const detected = detectTerminals()
-  if (!detected.length) console.log(pc.dim('  未检测到 claude / codex / opencode'))
+  if (!detected.length) console.log(pc.dim('  未检测到 claude / codex / opencode / cursor'))
   for (const t of detected) {
     check(TERMINAL_LABELS[t], isWired(t), isWired(t) ? '已接线' : '运行 vision-relay setup')
   }

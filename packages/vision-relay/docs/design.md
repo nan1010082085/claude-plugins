@@ -34,6 +34,7 @@ vision-relay（一次性进程，零守护）
 | hook | Claude Code | `~/.claude/settings.json` UserPromptSubmit → `vision-relay hook` | prompt 文本含图片路径/URL 时自动注入 |
 | MCP 工具 | 三家都支持 | `vision-relay mcp`（stdio JSON-RPC）→ `vision_describe` | agent 调用，支持 path/url + question |
 | 命令 | Claude Code / Codex / opencode | `/vision <图片> <提示词>` 自定义命令模板 | 用户显式发起，提示词自定义 |
+| MCP 工具 | Codex / opencode / **Cursor** | 同上 | Cursor 的 hooks 无 UserPromptSubmit 事件，MCP 是唯一通道 |
 
 ### 粘贴图片的处理（v0.3.0）
 
@@ -129,6 +130,7 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | Claude Code | `~/.claude/settings.json` hooks.UserPromptSubmit；`claude mcp add -s user`；`~/.claude/commands/vision*.md` |
 | Codex | `~/.codex/config.toml` `[mcp_servers.vision-relay]`；`~/.codex/prompts/vision.md` |
 | opencode | `~/.config/opencode/opencode.json` mcp.local；`~/.config/opencode/command/vision.md` |
+| Cursor | `~/.cursor/mcp.json` mcpServers（无 hook / 命令，仅 MCP） |
 
 若全局无 `vision-relay` 命令，自动改用 `npx -y vision-relay`。
 

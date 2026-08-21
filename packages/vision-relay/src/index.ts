@@ -29,7 +29,7 @@ program
 
 program
   .command('setup')
-  .description('自动接线到 Claude Code / Codex / opencode（hook + MCP + /vision 命令）')
+  .description('自动接线到 Claude Code / Codex / opencode / Cursor（hook + MCP + /vision 命令）')
   .option('--all', '不询问，配置所有已检测到的终端')
   .action((opts: { all?: boolean }) => (opts.all ? setupAllDetected() : setupInteractive()))
 
@@ -56,7 +56,7 @@ program
 
 program
   .command('doctor')
-  .description('检查配置完整性与三终端接线状态')
+  .description('检查配置完整性与各终端接线状态')
   .action(() => doctor())
 
 program

@@ -76,3 +76,4 @@
 | 0.1.5 | 新增 /vision-doctor 斜杠命令 + 重写 README |
 | 0.2.1 | Codex 接线：setupCodex() 添加 UserPromptSubmit hook + MCP server + /vision 命令 |
 | 0.3.0 | 粘贴图片直读：`[Image #N]` 映射 image-cache/<session_id>/N.png，用户粘贴即用 |
+| 0.4.0 | Cursor 接线：setupCursor() 写 ~/.cursor/mcp.json（MCP 通道，无 hook） |

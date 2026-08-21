@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 
-export type TerminalId = 'claude-code' | 'codex' | 'opencode'
+export type TerminalId = 'claude-code' | 'codex' | 'opencode' | 'cursor'
 
 export interface ResolvedCommand {
   command: string
@@ -145,6 +145,24 @@ export function setupOpencode(): string[] {
   return log
 }
 
+// ---------- Cursor ----------
+
+/** Cursor 的 hooks 只有 afterFileEdit/sessionStart 等事件，无 UserPromptSubmit，只能走 MCP 通道 */
+export function setupCursor(): string[] {
+  const log: string[] = []
+  const configPath = join(homedir(), '.cursor', 'mcp.json')
+  const config = readJson(configPath)
+  const mcp = resolveCommand('mcp')
+  const mcpServers = (config.mcpServers ?? {}) as Record<string, unknown>
+  if (!('vision-relay' in mcpServers)) {
+    mcpServers['vision-relay'] = { type: 'stdio', command: mcp.command, args: mcp.args }
+    config.mcpServers = mcpServers
+    writeJson(configPath, config)
+    log.push(`MCP server -> ${configPath}`)
+  }
+  return log
+}
+
 export function detectTerminals(): TerminalId[] {
   const has = (bin: string): boolean =>
     process.platform === 'win32'
@@ -154,6 +172,8 @@ export function detectTerminals(): TerminalId[] {
   if (has('claude')) found.push('claude-code')
   if (has('codex')) found.push('codex')
   if (has('opencode')) found.push('opencode')
+  // cursor CLI 常不在 PATH，落到配置目录检测
+  if (has('cursor') || existsSync(join(homedir(), '.cursor'))) found.push('cursor')
   return found
 }
 
@@ -161,6 +181,7 @@ export const TERMINAL_LABELS: Record<TerminalId, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
   opencode: 'opencode',
+  cursor: 'Cursor',
 }
 
 export function applySetup(terminals: TerminalId[]): string[] {
@@ -169,6 +190,7 @@ export function applySetup(terminals: TerminalId[]): string[] {
     if (t === 'claude-code') results.push(...setupClaudeCode())
     else if (t === 'codex') results.push(...setupCodex())
     else if (t === 'opencode') results.push(...setupOpencode())
+    else if (t === 'cursor') results.push(...setupCursor())
   }
   return results
 }
@@ -177,7 +199,7 @@ export async function setupInteractive(): Promise<void> {
   p.intro('vision-relay 终端接线')
   const detected = detectTerminals()
   if (!detected.length) {
-    p.log.warn('未检测到 claude / codex / opencode，请确认已安装')
+    p.log.warn('未检测到 claude / codex / opencode / cursor，请确认已安装')
     p.outro('结束')
     return
   }
@@ -205,7 +227,7 @@ export async function setupInteractive(): Promise<void> {
 export async function setupAllDetected(): Promise<void> {
   const detected = detectTerminals()
   if (!detected.length) {
-    console.log(pc.yellow('未检测到 claude / codex / opencode'))
+    console.log(pc.yellow('未检测到 claude / codex / opencode / cursor'))
     return
   }
   const log = applySetup(detected)
