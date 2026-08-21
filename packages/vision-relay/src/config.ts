@@ -72,11 +72,14 @@ function deepMerge<T>(base: T, patch: unknown): T {
   if (!isPlainObject(patch) || !isPlainObject(base)) return (patch as T) ?? base
   const out: Record<string, unknown> = { ...base }
   for (const [k, v] of Object.entries(patch)) {
+    // 丢弃历史残留字段（如已删除的 proxy）
+    if (!(k in (base as object)) && k === 'proxy') continue
     out[k] = k in base ? deepMerge((base as Record<string, unknown>)[k], v) : v
   }
   return out as T
 }
 
+/** 加载配置；磁盘上若仍有旧 proxy 字段，读入后丢弃不写出 */
 export function loadConfig(): { config: Config; exists: boolean } {
   const p = configPath()
   if (!existsSync(p)) return { config: defaultConfig(), exists: false }
@@ -85,6 +88,10 @@ export function loadConfig(): { config: Config; exists: boolean } {
     parsed = JSON.parse(readFileSync(p, 'utf8'))
   } catch (e) {
     throw new Error(`配置文件解析失败 ${p}: ${(e as Error).message}`)
+  }
+  if (isPlainObject(parsed) && 'proxy' in parsed) {
+    const { proxy: _drop, ...rest } = parsed
+    parsed = rest
   }
   return { config: deepMerge(defaultConfig(), parsed), exists: true }
 }

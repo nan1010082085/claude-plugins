@@ -30,63 +30,61 @@ npx vision-relay init
 npx vision-relay setup
 ```
 
-## 使用
+## 使用（推荐：命令两段式）
 
-配置完成后，直接在 Claude Code 里说：
+在 Claude Code / Codex / opencode 里：
 
 ```
-帮我看看 ./screenshots/error.png 这个报错是什么原因
+/vision ./screenshots/error.png 这个报错是什么原因
 ```
 
-prompt 中出现图片路径或 URL 时，vision-relay 自动识别并注入描述，编码模型无需任何改动。
+流程固定为：
+
+1. **视觉**：Bash 跑 `vision-relay describe <图> -q "<问题>"`（或 MCP `vision_describe`）拿到文字  
+2. **编码**：模型只根据描述回答 / 改代码，禁止猜图
+
+也可直接在终端预览识别结果：
+
+```bash
+vision-relay describe ./screenshots/error.png -q "逐字转录报错"
+```
+
+prompt 里出现图片路径/URL 时，Claude Code hook 仍会自动注入描述（与 `/vision` 互补）。
 
 ### 粘贴图片
 
-**直接粘贴即可，无需任何额外操作。** 用户在 Claude Code 里粘贴图片时，Claude Code 会把图片落盘到 `~/.claude/image-cache/<session_id>/N.png`；hook 从 stdin 拿到 `session_id`，把 `[Image #N]` 映射到对应缓存文件，直接读取识别并注入描述。
+Claude Code 粘贴图会落到 `~/.claude/image-cache/<session_id>/N.png`；hook 按 `session_id` + `[Image #N]` 读盘识别。缓存缺失时请改用文件路径 + `/vision`。
 
-仅在缓存缺失（会话已被清理）时才会提示改用文件路径或 URL。
+### MCP（Cursor 主通道）
 
-### MCP 工具参数
+`vision_describe`：`path` / `url` / `image_data` + 可选 `question`。必须先调工具再回答。
 
-`vision_describe` 工具支持三种传图方式（任选其一）：
-
-| 参数 | 说明 |
-|------|------|
-| `path` | 本地图片路径 |
-| `url` | 图片 URL |
-| `image_data` | 图片的 base64 编码（配合 `media_type` 使用，预留） |
-
-### Claude CLI 斜杠命令
+### 斜杠命令
 
 | 命令 | 说明 |
 |------|------|
-| `/vision <图片路径> <问题>` | 识别图片，针对问题返回描述 |
+| `/vision <图片> <问题>` | **先识别再回答**（优先 describe CLI） |
 | `/vision-config` | 配置视觉模型 |
-| `/vision-doctor` | 检查配置与接线状态 |
+| `/vision-doctor` | 检查配置与接线 |
 
 ### 支持的协议
 
-**OpenAI / Anthropic 两种协议**，不绑定厂商——只要提供 baseUrl + 模型名 + API Key 即可。
+**OpenAI / Anthropic**，不绑定厂商——baseUrl + 模型名 + API Key 即可。
 
 ## 工作原理
 
 ```
-你的 prompt（含图片路径）
+/vision ./x.png 问题
   │
-  ├─ Claude Code hook：自动识别，描述注入上下文（无需手动调用）
-  ├─ MCP 工具：vision_describe，编码模型按需调用（Codex / opencode / Cursor 的主通道）
-  └─ /vision 命令：显式触发（Claude Code / Codex / opencode）
-  │
-  ▼
-vision-relay 调配置的视觉模型识别图片
-  │
-  ▼
-文字描述进入对话上下文，编码模型基于描述回答
+  ├─ 1) vision-relay describe  → 视觉模型 → 文字描述（stdout）
+  └─ 2) 编码模型只读描述 → 回答 / 改代码
+
+其它通道：
+  ├─ hook：prompt 含路径/URL 或 Claude 粘贴 image-cache → 自动注入
+  └─ MCP vision_describe：Cursor / 无 shell 时备选
 ```
 
-> **Cursor**：无 UserPromptSubmit hook，仅 MCP 通道（`~/.cursor/mcp.json`）。
-
-无常驻进程，不占端口，每次由终端按需拉起。
+无常驻进程，不占端口；每次由终端 / 命令按需拉起。
 
 ## 图片处理
 

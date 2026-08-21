@@ -9,10 +9,11 @@ const { version } = require('../package.json') as { version: string }
 const TOOL = {
   name: 'vision_describe',
   description:
-    '识别图片并返回详细文字描述。当用户消息中出现图片且你无法直接查看时，必须先调用本工具，严禁猜测图片内容。' +
-    '三种传图方式（任选其一）：' +
-    '1. path — 本地图片路径；2. url — 图片 URL；3. image_data — 图片的 base64 编码（当用户粘贴图片时，你可以从对话上下文的 content block 中获取 base64 数据传入此参数）。' +
-    'question（可选）：针对图片的具体问题。',
+    '【必须先调用再回答】用视觉模型识别图片并返回详细文字描述。' +
+    '编码模型无法看图时：凡涉及图片内容，必须先调用本工具拿到描述，严禁凭文件名或上下文猜测。' +
+    '传图（任选其一）：path=本地路径；url=图片URL；image_data=base64。' +
+    'question=针对图片的具体问题（强烈建议传入，让描述围绕问题）。' +
+    '拿到 tool result 后再回答用户；描述不足则换更具体的 question 重试。',
   inputSchema: {
     type: 'object' as const,
     properties: {

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { setupCursor } from '../src/setup.js'
+import { loadBundledCommand, setupClaudeCode, setupCursor, writeCommandFile } from '../src/setup.js'
 
 let home: string
 let realHome: string
@@ -20,6 +20,30 @@ afterEach(() => {
 function mcpJsonPath(): string {
   return join(home, '.cursor', 'mcp.json')
 }
+
+describe('writeCommandFile / 命令模板', () => {
+  it('覆盖更新旧版 /vision 模板', () => {
+    const path = join(home, '.claude', 'commands', 'vision.md')
+    mkdirSync(join(home, '.claude', 'commands'), { recursive: true })
+    writeFileSync(path, 'old template')
+    expect(writeCommandFile(path, loadBundledCommand('vision.md'))).toBe(true)
+    const body = readFileSync(path, 'utf8')
+    expect(body).toContain('第 1 段：视觉识别')
+    expect(body).toContain('vision-relay describe')
+    expect(writeCommandFile(path, loadBundledCommand('vision.md'))).toBe(false)
+  })
+})
+
+describe('setupClaudeCode 命令同步', () => {
+  it('写入并更新 vision.md', () => {
+    mkdirSync(join(home, '.claude'), { recursive: true })
+    writeFileSync(join(home, '.claude', 'settings.json'), '{}')
+    setupClaudeCode()
+    const path = join(home, '.claude', 'commands', 'vision.md')
+    expect(existsSync(path)).toBe(true)
+    expect(readFileSync(path, 'utf8')).toContain('vision-relay describe')
+  })
+})
 
 describe('setupCursor', () => {
   it('mcp.json 不存在时创建并写入 vision-relay', () => {

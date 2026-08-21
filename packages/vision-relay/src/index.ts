@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { Command } from 'commander'
 import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
+import { describeCli } from './describe-cli.js'
 import { hookMain } from './hook.js'
 import { runMcpServer } from './mcp.js'
 import { setupAllDetected, setupInteractive } from './setup.js'
@@ -29,9 +30,18 @@ program
 
 program
   .command('setup')
-  .description('自动接线到 Claude Code / Codex / opencode / Cursor（hook + MCP + /vision 命令）')
+  .description('接线到 Claude Code / Codex / opencode / Cursor（hook + MCP + /vision 命令）')
   .option('--all', '不询问，配置所有已检测到的终端')
   .action((opts: { all?: boolean }) => (opts.all ? setupAllDetected() : setupInteractive()))
+
+program
+  .command('describe')
+  .description('识别一张图片并打印文字描述（供 /vision 命令 Bash 优先调用）')
+  .argument('<image>', '本地图片路径或 http(s) URL')
+  .option('-q, --question <text>', '针对图片的问题（作为识别提示词）')
+  .action(async (image: string, opts: { question?: string }) => {
+    process.exitCode = await describeCli({ image, question: opts.question })
+  })
 
 program
   .command('test')
@@ -57,7 +67,7 @@ program
 program
   .command('doctor')
   .description('检查配置完整性与各终端接线状态')
-  .action(() => doctor())
+  .action(async () => doctor())
 
 program
   .command('mcp', { hidden: true })

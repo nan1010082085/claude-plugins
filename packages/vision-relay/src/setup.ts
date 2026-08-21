@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
 
@@ -33,24 +34,28 @@ function writeJson(path: string, data: unknown): void {
   writeFileSync(path, JSON.stringify(data, null, 2))
 }
 
-function writeIfAbsent(path: string, content: string): boolean {
-  if (existsSync(path)) return false
+/** 包根目录（src 或 dist 的上一级） */
+export function packageRoot(): string {
+  return join(dirname(fileURLToPath(import.meta.url)), '..')
+}
+
+/** 读取 packages 内 commands/*.md，setup 时同步到各终端 */
+export function loadBundledCommand(name: string): string {
+  const p = join(packageRoot(), 'commands', name)
+  if (!existsSync(p)) throw new Error(`缺少内置命令模板: ${p}`)
+  return readFileSync(p, 'utf8')
+}
+
+/**
+ * 写入斜杠命令模板（始终覆盖，保证 /vision 两段式规则可随版本更新）。
+ * @returns 是否发生了内容变化
+ */
+export function writeCommandFile(path: string, content: string): boolean {
   mkdirSync(dirname(path), { recursive: true })
+  if (existsSync(path) && readFileSync(path, 'utf8') === content) return false
   writeFileSync(path, content)
   return true
 }
-
-const VISION_COMMAND_MD = `---
-description: 用视觉模型识别图片（vision-relay）
----
-用户请求：$ARGUMENTS
-
-执行规则：
-1. 你可能无法直接查看图片。回答中凡是涉及图片路径或 URL 的内容，必须先调用 vision_describe 工具获取描述，严禁凭文件名或上下文猜测图片内容。
-2. 如果参数中带具体问题，把问题作为 vision_describe 的 question 参数传入，让识别围绕问题展开。
-3. 拿到描述后结合描述回答；若描述不足以回答，换一个更具体的 question 再调用一次。
-4. 如果参数中没有图片路径或 URL，提醒用户提供，例如：/vision ./screenshots/error.png 这个报错怎么修
-`
 
 // ---------- Claude Code ----------
 
@@ -72,7 +77,6 @@ export function setupClaudeCode(): string[] {
     log.push(`UserPromptSubmit hook -> ${settingsPath}`)
   }
 
-  // MCP：优先用 claude CLI 注册（user 作用域）
   const mcp = resolveCommand('mcp')
   const claude = spawnSync(
     'claude',
@@ -82,8 +86,13 @@ export function setupClaudeCode(): string[] {
   if (claude.status === 0) log.push('MCP server -> claude mcp (user 作用域)')
   else log.push(`MCP 注册: 请手动执行 claude mcp add -s user vision-relay -- ${mcp.command} ${mcp.args.join(' ')}`)
 
-  if (writeIfAbsent(join(homedir(), '.claude', 'commands', 'vision.md'), VISION_COMMAND_MD)) {
-    log.push('/vision 命令 -> ~/.claude/commands/vision.md')
+  const visionMd = loadBundledCommand('vision.md')
+  const cmdPath = join(homedir(), '.claude', 'commands', 'vision.md')
+  if (writeCommandFile(cmdPath, visionMd)) log.push(`/vision 命令已更新 -> ${cmdPath}`)
+
+  for (const name of ['vision-config.md', 'vision-doctor.md'] as const) {
+    const dest = join(homedir(), '.claude', 'commands', name)
+    if (writeCommandFile(dest, loadBundledCommand(name))) log.push(`/${name.replace(/\.md$/, '')} 已更新 -> ${dest}`)
   }
   return log
 }
@@ -102,7 +111,6 @@ export function setupCodex(): string[] {
     log.push(`MCP server -> ${configPath}`)
   }
 
-  // UserPromptSubmit hook → ~/.codex/hooks.json
   const hooksPath = join(homedir(), '.codex', 'hooks.json')
   const hookCmd = resolveCommand('hook')
   const hooksJson = readJson(hooksPath)
@@ -119,8 +127,9 @@ export function setupCodex(): string[] {
     log.push(`UserPromptSubmit hook -> ${hooksPath}`)
   }
 
-  if (writeIfAbsent(join(homedir(), '.codex', 'prompts', 'vision.md'), VISION_COMMAND_MD)) {
-    log.push('/vision 命令 -> ~/.codex/prompts/vision.md')
+  const promptPath = join(homedir(), '.codex', 'prompts', 'vision.md')
+  if (writeCommandFile(promptPath, loadBundledCommand('vision.md'))) {
+    log.push(`/vision 命令已更新 -> ${promptPath}`)
   }
   return log
 }
@@ -139,15 +148,16 @@ export function setupOpencode(): string[] {
     writeJson(configPath, config)
     log.push(`MCP server -> ${configPath}`)
   }
-  if (writeIfAbsent(join(homedir(), '.config', 'opencode', 'command', 'vision.md'), VISION_COMMAND_MD)) {
-    log.push('/vision 命令 -> ~/.config/opencode/command/vision.md')
+  const cmdPath = join(homedir(), '.config', 'opencode', 'command', 'vision.md')
+  if (writeCommandFile(cmdPath, loadBundledCommand('vision.md'))) {
+    log.push(`/vision 命令已更新 -> ${cmdPath}`)
   }
   return log
 }
 
 // ---------- Cursor ----------
 
-/** Cursor 的 hooks 只有 afterFileEdit/sessionStart 等事件，无 UserPromptSubmit，只能走 MCP 通道 */
+/** Cursor 无 UserPromptSubmit / 斜杠命令，主通道为 MCP */
 export function setupCursor(): string[] {
   const log: string[] = []
   const configPath = join(homedir(), '.cursor', 'mcp.json')
@@ -168,7 +178,6 @@ export function detectTerminals(): TerminalId[] {
     process.platform === 'win32'
       ? spawnSync('where', [bin], { shell: true, stdio: 'ignore' }).status === 0
       : spawnSync('which', [bin], { stdio: 'ignore' }).status === 0
-  // CLI 不在 PATH 时落到配置目录检测（Codex 桌面版 / Cursor 无 CLI 命令）
   const hasDir = (dir: string): boolean => existsSync(join(homedir(), dir))
   const found: TerminalId[] = []
   if (has('claude') || hasDir('.claude')) found.push('claude-code')
@@ -197,7 +206,7 @@ export function applySetup(terminals: TerminalId[]): string[] {
 }
 
 export async function setupInteractive(): Promise<void> {
-  p.intro('vision-relay 终端接线')
+  p.intro('vision-relay 终端接线（命令 + MCP）')
   const detected = detectTerminals()
   if (!detected.length) {
     p.log.warn('未检测到 claude / codex / opencode / cursor，请确认已安装')
@@ -222,7 +231,7 @@ export async function setupInteractive(): Promise<void> {
   const log = applySetup(selected as TerminalId[])
   s.stop('完成')
   for (const line of log) p.log.success(line)
-  p.outro('接线完成，重启对应终端后生效')
+  p.outro('接线完成。看图请用 /vision <路径> <问题>（先识别再回答）。重启对应终端后生效')
 }
 
 export async function setupAllDetected(): Promise<void> {
@@ -233,5 +242,5 @@ export async function setupAllDetected(): Promise<void> {
   }
   const log = applySetup(detected)
   for (const line of log) console.log(pc.green('  ✓ ') + line)
-  console.log(`已配置: ${detected.map((t) => TERMINAL_LABELS[t]).join(', ')}，重启对应终端后生效`)
+  console.log(`已配置: ${detected.map((t) => TERMINAL_LABELS[t]).join(', ')}。看图: /vision <图> <问题>`)
 }

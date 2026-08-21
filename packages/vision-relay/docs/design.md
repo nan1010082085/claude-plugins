@@ -1,8 +1,8 @@
 # vision-relay 设计与测试方案
 
-> 状态：**v0.3.0 开发完成，粘贴图片直读 image-cache，无需用户另存文件。**
+> 状态：**v0.9.0 主通道 = 命令优先（describe）+ MCP + hook；代理代码已删除。**
 >
-> 2026-08-20 从零开发到发布，经历 7 个版本迭代（0.1.0 → 0.2.0）。
+> 2026-08-20 从零开发；2026-08-21 否定并移除「劫持出口」代理。
 
 ## 1. 问题
 
@@ -10,7 +10,7 @@
 
 ## 2. 架构：中转模式（无常驻进程）
 
-**决策记录：** 早期方案是本地 HTTP 代理（拦截 `/v1/messages` 改写图片块），用户明确否决——只要中转，不要常驻服务。代理模式保留为后续可选增强（见 §9）。
+**决策记录：** 早期方案曾考虑本地 HTTP 代理拦截 API 改写图片块；实践证明会劫持整条出口且不可靠，**已删除**。主通道为 hook + MCP + `/vision`（命令优先 `describe`）。
 
 ```
 用户在 CLI 输入（图片路径 / URL + 可选提示词）
@@ -109,9 +109,10 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | 命令 | 功能 |
 |------|------|
 | `vision-relay init` | 问答式 TUI：协议 → baseUrl → 模型 → 密钥 → maxTokens → 立即测试连接 → 保存 → 顺势 setup |
-| `vision-relay setup` | 自动接线：检测 claude/codex/opencode，multiselect 选择，写入各终端配置 |
+| `vision-relay setup` | 自动接线 + **覆盖更新** `/vision` 等命令模板 |
+| `vision-relay describe <图> [-q 问题]` | 同步识别，stdout 输出描述（`/vision` 优先 Bash 调用） |
 | `vision-relay test` | 发 1x1 测试图到视觉模型，验证连通/鉴权/响应非空 |
-| `vision-relay doctor` | 配置完整性 + 三终端接线状态 |
+| `vision-relay doctor` | 配置完整性 + 终端接线状态 |
 | `vision-relay mcp` | stdio MCP server（被终端拉起，非守护） |
 | `vision-relay hook` | Claude Code UserPromptSubmit 处理器（读 stdin JSON） |
 
@@ -182,8 +183,27 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | M1 | 配置 + 视觉客户端（两协议）+ TUI init/test | ✅ 完成 |
 | M2 | MCP server + Claude Code hook + 三终端 setup + doctor | ✅ 完成 |
 | M3 | 防抢跑文案 + 大图自动压缩 + Claude Code plugin 打包 + 斜杠命令 + 真模型 E2E | ✅ 完成 |
-| M4+ | 代理模式（图片块拦截）、描述缓存、多视觉模型路由、Web UI | 按需 |
+| M4 | 命令优先两段式（`describe` + `/vision`）+ 删除代理 | ✅ 完成 |
+| 后续 | 多视觉模型路由、Web UI | 按需 |
 
-## 9. 代理模式（预留，未实现）
+## 9. 命令优先两段式（主路径）
 
-本地 HTTP 代理拦截 `/v1/messages`、`/v1/chat/completions`，把粘贴的图片内容块替换为描述后转发。覆盖"图片块"场景的唯一手段，作为可选高级模式，默认不启用。
+用户显式 `/vision <图> <问题>` 时，编码模型**不得先猜图**，必须：
+
+1. **先**用视觉模型拿到文字（优先 shell：`vision-relay describe …`；备选 MCP `vision_describe`）
+2. **再**仅依据描述回答 / 改代码
+
+```
+/vision ./err.png 这个报错怎么修
+        │
+        ├─ 1) Bash: vision-relay describe ./err.png -q "这个报错怎么修"
+        │         → stdout 纯文本描述
+        └─ 2) 编码模型读描述 → 回答用户
+```
+
+| 能力 | 说明 |
+|------|------|
+| `vision-relay describe <图> [-q 问题]` | 同步识别，stdout 输出描述；命令模板优先要求跑它 |
+| `/vision` 斜杠命令 | 强制两段式；setup 每次覆盖更新模板 |
+| MCP `vision_describe` | Cursor / 无 shell 场景备选；工具描述同样禁止抢跑 |
+| hook | 仍处理 prompt 中的路径/URL 与 Claude image-cache 粘贴图；与命令互补 |

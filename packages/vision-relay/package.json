@@ -1,7 +1,7 @@
 {
   "name": "vision-relay",
-  "version": "0.5.0",
-  "description": "为无视觉能力的编码模型代理图片理解：本地代理拦截请求中的图片，交给配置的视觉模型识别后再转发（支持 Claude Code / Codex 等）",
+  "version": "0.9.0",
+  "description": "为无视觉能力的编码模型中转图片理解：命令优先（describe）+ MCP，支持 Claude Code / Codex / Cursor",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -48,8 +48,8 @@
     "claude-code",
     "codex",
     "vision",
-    "proxy",
     "image",
-    "llm"
+    "llm",
+    "mcp"
   ]
 }

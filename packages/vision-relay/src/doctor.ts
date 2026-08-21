@@ -84,7 +84,7 @@ function check(label: string, ok: boolean, detail?: string): void {
   console.log(`  ${mark} ${label}${detail ? pc.dim(` - ${detail}`) : ''}`)
 }
 
-export function doctor(): void {
+export async function doctor(): Promise<void> {
   console.log(pc.bold('vision-relay doctor\n'))
 
   console.log(pc.bold('环境'))
