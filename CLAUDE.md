@@ -36,6 +36,7 @@ packages/<plugin>/
 3. 发布到 npm：`cd packages/<plugin> && npm publish`
 4. 同步推送 GitHub
 5. 验证：`npx <package> --version` 或安装到目标环境跑通
+6. **有代码/文档改动后即 `ima-upload`**（不必等 commit；简述版本与改动）
 
 ## 测试要求
 

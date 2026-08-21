@@ -1,7 +1,7 @@
 {
   "name": "vision-relay",
-  "version": "0.10.2",
-  "description": "为无视觉能力的编码模型中转图片理解：/vision + MCP（path/clipboard/recent）+ 可选会话包装",
+  "version": "0.10.5",
+  "description": "为无视觉能力的编码模型中转图片理解：macOS/Windows 双端接线 + /vision/MCP + 可选会话包装",
   "type": "module",
   "license": "MIT",
   "bin": {

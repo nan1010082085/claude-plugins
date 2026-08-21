@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import {
   buildSessionSettingsOverride,
   isLoopbackBaseUrl,
   resolveClaudeUpstream,
+  writeSessionSettingsFile,
 } from '../src/wrap-claude.js'
 
 const prevHome = process.env.HOME
@@ -61,10 +62,12 @@ describe('resolveClaudeUpstream', () => {
     expect(() => resolveClaudeUpstream({})).toThrow(/本机/)
   })
 
-  it('buildClaudeArgv 注入 --settings 覆盖且不依赖写盘', () => {
-    const argv = buildClaudeArgv('http://127.0.0.1:9', ['-c'])
+  it('buildClaudeArgv 使用 settings 文件路径（避免 Windows 内联 JSON 被拆坏）', () => {
+    const file = writeSessionSettingsFile('http://127.0.0.1:9')
+    const argv = buildClaudeArgv(file, ['-c'])
     expect(argv[0]).toBe('--settings')
-    expect(JSON.parse(argv[1]!)).toEqual({
+    expect(argv[1]).toBe(file)
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
       env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:9' },
     })
     expect(argv.slice(2)).toEqual(['-c'])

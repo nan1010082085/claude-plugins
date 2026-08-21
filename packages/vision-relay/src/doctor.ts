@@ -1,14 +1,21 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pc from 'picocolors'
 import { configPath, loadConfig, validateConfig } from './config.js'
+import {
+  claudeConfigDir,
+  claudeSettingsPath,
+  claudeUserMcpPath,
+  codexHome,
+  cursorConfigDir,
+  opencodeConfigDir,
+  userHome,
+} from './paths.js'
 import { detectTerminals, TERMINAL_LABELS, type TerminalId } from './setup.js'
 import { checkClaudeWrapReady, isLoopbackBaseUrl } from './wrap-claude.js'
 
 interface WiringResult {
   ok: boolean
-  /** 每条接线一个明细：文案 + 是否命中 */
   details: Array<{ label: string; ok: boolean; path: string }>
 }
 
@@ -18,28 +25,28 @@ function readText(path: string): string {
 
 function wiring(t: TerminalId): WiringResult {
   if (t === 'claude-code') {
-    const settingsPath = join(homedir(), '.claude', 'settings.json')
+    const settingsPath = claudeSettingsPath()
     const hookHit = readText(settingsPath).includes('vision-relay')
-    const mcpPath = join(homedir(), '.claude.json')
+    const mcpPath = claudeUserMcpPath()
     let mcpHit = false
     try {
       const mcp = JSON.parse(readText(mcpPath) || '{}')
       mcpHit = 'vision-relay' in (mcp.mcpServers ?? {})
     } catch {}
-    const cmdPath = join(homedir(), '.claude', 'commands', 'vision.md')
+    const cmdPath = join(claudeConfigDir(), 'commands', 'vision.md')
     return {
-      ok: hookHit,
+      ok: hookHit || mcpHit,
       details: [
         { label: 'hook (UserPromptSubmit)', ok: hookHit, path: settingsPath },
-        { label: 'MCP (user 作用域)', ok: mcpHit, path: mcpPath },
+        { label: 'MCP (~/.claude.json)', ok: mcpHit, path: mcpPath },
         { label: '/vision 命令', ok: existsSync(cmdPath), path: cmdPath },
       ],
     }
   }
   if (t === 'codex') {
-    const tomlPath = join(homedir(), '.codex', 'config.toml')
-    const hooksPath = join(homedir(), '.codex', 'hooks.json')
-    const cmdPath = join(homedir(), '.codex', 'prompts', 'vision.md')
+    const tomlPath = join(codexHome(), 'config.toml')
+    const hooksPath = join(codexHome(), 'hooks.json')
+    const cmdPath = join(codexHome(), 'prompts', 'vision.md')
     const mcpHit = readText(tomlPath).includes('[mcp_servers.vision-relay]')
     const hookHit = readText(hooksPath).includes('vision-relay')
     return {
@@ -52,7 +59,7 @@ function wiring(t: TerminalId): WiringResult {
     }
   }
   if (t === 'cursor') {
-    const mcpPath = join(homedir(), '.cursor', 'mcp.json')
+    const mcpPath = join(cursorConfigDir(), 'mcp.json')
     let mcpHit = false
     try {
       const config = JSON.parse(readText(mcpPath) || '{}')
@@ -63,18 +70,17 @@ function wiring(t: TerminalId): WiringResult {
       details: [{ label: 'MCP server', ok: mcpHit, path: mcpPath }],
     }
   }
-  // opencode
-  const configPath = join(homedir(), '.config', 'opencode', 'opencode.json')
-  const cmdPath = join(homedir(), '.config', 'opencode', 'command', 'vision.md')
+  const configPathOpencode = join(opencodeConfigDir(), 'opencode.json')
+  const cmdPath = join(opencodeConfigDir(), 'command', 'vision.md')
   let mcpHit = false
   try {
-    const config = JSON.parse(readText(configPath) || '{}')
+    const config = JSON.parse(readText(configPathOpencode) || '{}')
     mcpHit = 'vision-relay' in (config.mcp ?? {})
   } catch {}
   return {
     ok: mcpHit,
     details: [
-      { label: 'MCP server', ok: mcpHit, path: configPath },
+      { label: 'MCP server', ok: mcpHit, path: configPathOpencode },
       { label: '/vision 命令', ok: existsSync(cmdPath), path: cmdPath },
     ],
   }
@@ -87,6 +93,8 @@ function check(label: string, ok: boolean, detail?: string): void {
 
 export async function doctor(): Promise<void> {
   console.log(pc.bold('vision-relay doctor\n'))
+  console.log(pc.dim(`  home     ${userHome()}`))
+  console.log(pc.dim(`  platform ${process.platform}`))
 
   console.log(pc.bold('环境'))
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
@@ -133,7 +141,7 @@ export async function doctor(): Promise<void> {
     check(i.label, i.ok, i.detail)
   }
   // 残留本机 BASE_URL 警告（旧常驻代理）
-  const settingsPath = join(homedir(), '.claude', 'settings.json')
+  const settingsPath = claudeSettingsPath()
   try {
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {

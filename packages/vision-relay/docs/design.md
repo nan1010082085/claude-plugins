@@ -1,8 +1,8 @@
 # vision-relay 设计与测试方案
 
-> 状态：**v0.10.0** = describe/MCP/hook + **`vision-relay claude` 会话级粘贴改写**（不写 settings）。
+> 状态：**v0.10.2** = `/vision` + MCP（path / clipboard / recent / #N）+ hook + 可选 **`vision-relay claude`** 会话粘贴改写。
 >
-> 2026-08-20 从零开发；曾实现常驻代理后删除；2026-08-21 以「包装启动、退出即停」恢复粘贴改写能力。
+> 2026-08-20 从零开发；常驻代理已删除；会话包装用 `--settings` 覆盖 BASE_URL（不写盘）。
 
 ## 1. 问题
 
@@ -13,32 +13,46 @@
 ```
 用户看图
    │
-   ├─ vision-relay claude     【对话内粘贴】会话进程临时改写出站 Image→文字
-   │     不写 settings；上游=cc-switch 原 ANTHROPIC_BASE_URL；退出即停
+   ├─ /vision <图> <问题>     【推荐主路径】图 = 路径|URL|clipboard|recent|#N
+   │     describe CLI 或 MCP → 视觉文字 → 编码模型只读文字
    │
-   ├─ /vision <图> <问题>     【路径/命令】
-   ├─ MCP vision_describe
-   └─ UserPromptSubmit hook   【路径/URL / image-cache 注入；不能单独破硬 400】
+   ├─ MCP vision_describe     【Cursor / 无 Bash】
+   │
+   ├─ vision-relay claude     【可选】Claude 对话内粘贴/拖图：会话改写，不写 settings
+   │
+   └─ UserPromptSubmit hook   【辅助】路径/URL/image-cache；不能单独破硬 400
 ```
 
 ### 注入通道
 
 | 通道 | 终端 | 机制 | 触发 |
 |------|------|------|------|
-| **命令** | Claude Code / Codex / opencode | `/vision` → 优先 `vision-relay describe`，备选 MCP | 用户显式发起（推荐） |
-| MCP | 全端含 **Cursor** | `vision_describe`（path / url / image_data + question） | agent 按需调用 |
-| hook | Claude Code（Codex 亦可接线） | UserPromptSubmit → `vision-relay hook` | prompt 含路径/URL 或 `[Image #N]` |
+| **命令** | Claude Code / Codex / opencode | `/vision` → `describe` 优先，备选 MCP | 用户显式（推荐） |
+| MCP | 全端含 **Cursor** | `vision_describe`（path/url/clipboard/recent/#N/image_data + question） | agent 按需 |
+| 会话包装 | **仅 Claude Code CLI** | `--settings` 覆盖 BASE_URL → 本机改写 | `vision-relay claude` |
+| hook | Claude Code（Codex 亦可） | UserPromptSubmit → `vision-relay hook` | 路径/URL/`[Image #N]` |
 
-### 粘贴图片的处理（v0.3.0）
+### 图源解析（v0.10.2，`resolve-source`）
 
-Claude Code 粘贴图片以 Image content block（base64）进入 API messages，prompt 文本中是 `[Image #N]` 占位符。
+`describe` / MCP / `/vision` 共用：
 
-**关键发现（实测 Claude Code 2.1.238）**：粘贴时 Claude Code 已把图片落盘到 `~/.claude/image-cache/<session_id>/N.png`，且 UserPromptSubmit hook stdin 含 `session_id`。两者对上后 hook 可直接读盘识别，用户粘贴即用。
+| 值 | 含义 |
+|----|------|
+| 本地路径 | 读文件 |
+| http(s) URL | 下载（禁私网 SSRF） |
+| `clipboard` | 系统剪贴板（macOS osascript/pngpaste；Linux wl-paste/xclip） |
+| `recent` | Claude `image-cache` 或 Codex `attachments` 最近一张 |
+| `#N` / `[Image #N]` | Claude image-cache 对应序号 |
 
-处理优先级：
-1. **stdin 含 inline base64（预留）**：`extractInlineImages()` 提取识别
-2. **`[Image #N]` -> image-cache 直读（主路径）**：`resolvePastedImage()` 按 `session_id + N` 定位缓存文件；stdin 缺 `session_id` 时兜底取最近更新的 image-cache 目录
-3. **缓存缺失**：注入降级提示（让用户改用文件路径 / URL），不再要求"另存为文件"
+**产品约定：** 无会话包装时，引导用户**不要**把图贴进对话框；截图后用 `clipboard` 或存文件再 `/vision`。
+
+### 粘贴 Image block（Claude）
+
+粘贴/拖图 → messages 含 Image block → 纯文本上游 400。  
+Hook 只能追加上下文，删不掉 Image block。  
+破 400 的唯一产品路径：`vision-relay claude`（`--settings` 指到本机改写；settings.env 会覆盖普通环境变量）。
+
+Codex：客户端常在出站前拦截「不支持图像」，包装命令尚未提供。
 
 ## 3. 视觉模型调用
 

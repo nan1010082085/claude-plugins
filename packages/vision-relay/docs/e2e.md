@@ -91,3 +91,16 @@
 | 0.10.0 | **`vision-relay claude` 会话包装**：临时本机改写粘贴 Image→文字；不写 settings；doctor 会话检查；SSRF/环路加固 |
 | 0.10.1 | 修复：用 `claude --settings` 覆盖 BASE_URL（settings.env 会盖掉进程环境）；拖图/粘贴同为 Image block |
 | 0.10.2 | 优化 `/vision` + MCP：支持 clipboard / recent / #N；命令模板强调勿附图、两段式更可执行 |
+| 0.10.2-docs | README / design 用法重写：场景对照表、双模型说明、Codex/Claude 边界 |
+| 0.10.3 | 修复 setup 多选：默认全选 + required；空选回退；Windows/Git Bash 终端检测增强 |
+| 0.10.4 | 修复 `vision-relay claude`：Windows 上改用临时 settings 文件，避免 Invalid JSON provided to --settings |
+| 0.10.5 | Windows/mac 双端接线：USERPROFILE 主目录、hook 用 cmd /c、直写 ~/.claude.json MCP、Windows 跳过多选改一键确认 |
+
+## 用法验收清单（0.10.2）
+
+- [ ] `vision-relay doctor` 配置 + 接线 + 会话包装节可读
+- [ ] `/vision ./x.png …` 走 describe / MCP，不附图
+- [ ] `/vision clipboard …`（先截图到剪贴板）
+- [ ] MCP `path=recent` / `path=#1`（有缓存时）
+- [ ] `vision-relay claude` 后粘贴不再 400（Claude CLI）；退出后 settings 未改
+- [ ] Codex：确认用 `/prompts:vision` + 路径/clipboard，不在输入框附图

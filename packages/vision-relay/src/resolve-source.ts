@@ -10,6 +10,7 @@ import {
   resolveClaudePastedImagePath,
   type ImageInput,
 } from './images.js'
+import { codexHome } from './paths.js'
 
 /**
  * 从用户参数解析图片来源（/vision、describe、MCP 共用）。
@@ -58,7 +59,7 @@ export function resolveRecentImagePath(): string | null {
       }
     } catch {}
   }
-  const codexAtt = join(process.env.CODEX_HOME ?? join(process.env.HOME ?? '', '.codex'), 'attachments')
+  const codexAtt = join(codexHome(), 'attachments')
   if (existsSync(codexAtt)) {
     try {
       const sessions = readdirSync(codexAtt, { withFileTypes: true })

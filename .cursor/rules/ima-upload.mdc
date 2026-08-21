@@ -1,0 +1,14 @@
+---
+description: 本仓库有文件改动就必须 ima-upload（与是否 commit 无关）
+alwaysApply: true
+---
+
+# Claude Plugins — IMA
+
+映射名：**Claude Plugins**。
+
+**改了 `packages/**`、文档或本仓规则文件之后就必须 `ima-upload`**，不要等 commit / push。
+
+```bash
+ima-upload -t "<具体标题>" -s "<改了什么/为什么/影响>" [-d "<关键文件>"]
+```

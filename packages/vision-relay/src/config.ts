@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { userHome } from './paths.js'
 
 export interface VisionConfig {
   type: 'openai' | 'anthropic'
@@ -57,7 +57,7 @@ export function defaultConfig(): Config {
 export function configDir(): string {
   if (process.env.VISION_RELAY_CONFIG_DIR) return process.env.VISION_RELAY_CONFIG_DIR
   const xdg = process.env.XDG_CONFIG_HOME
-  return join(xdg || join(homedir(), '.config'), 'vision-relay')
+  return join(xdg || join(userHome(), '.config'), 'vision-relay')
 }
 
 export function configPath(): string {
@@ -115,6 +115,10 @@ export function saveConfig(c: Config): string {
   mkdirSync(configDir(), { recursive: true })
   const p = configPath()
   writeFileSync(p, JSON.stringify(c, null, 2))
-  chmodSync(p, 0o600)
+  try {
+    chmodSync(p, 0o600)
+  } catch {
+    // Windows 可能不支持 Unix 权限位
+  }
   return p
 }

@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
+import { claudeSettingsPath, isWindows } from './paths.js'
 import { isLoopbackHost } from './rewrite.js'
 import { startSessionProxy } from './session-proxy.js'
 
@@ -30,7 +31,7 @@ export function resolveClaudeUpstream(env: NodeJS.ProcessEnv = process.env): {
     return { upstream: fromEnv.replace(/\/+$/, ''), source: 'env' }
   }
 
-  const settingsPath = join(homedir(), '.claude', 'settings.json')
+  const settingsPath = claudeSettingsPath()
   if (existsSync(settingsPath)) {
     try {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
@@ -102,36 +103,54 @@ export function checkClaudeWrapReady(env: NodeJS.ProcessEnv = process.env): {
     detail: `${claudeBin}（PATH 或 VISION_RELAY_CLAUDE_BIN；启动失败时再报错）`,
   })
 
-  // 硬性：视觉配置 + 非本机编码上游；claude bin 仅提示
   const hard = items.filter((i) => i.label !== 'claude 启动命令')
   return { ok: hard.every((i) => i.ok), items }
 }
 
 /**
- * 构造传给 `claude --settings` 的会话覆盖。
- * Claude Code 会用 settings.json 的 env **覆盖**进程环境，仅设环境变量无效；
- * `--settings` 优先级更高，且不写 ~/.claude/settings.json / 不动 cc-switch。
+ * 会话覆盖 JSON 内容（不直接塞进 CLI：Windows/Git Bash 会把内联 JSON 拆坏）。
  */
 export function buildSessionSettingsOverride(proxyBaseUrl: string): string {
-  return JSON.stringify({
-    env: {
-      ANTHROPIC_BASE_URL: proxyBaseUrl,
+  return JSON.stringify(
+    {
+      env: {
+        ANTHROPIC_BASE_URL: proxyBaseUrl,
+      },
     },
-  })
+    null,
+    2,
+  )
 }
 
 /**
- * 组装启动参数：注入 `--settings` 覆盖；若用户已传 `--settings` 则保留其后的值，
- * 我们的覆盖放在最前（Claude 对同名 key 以更高层为准；双份 settings 会 merge）。
+ * 写入临时 settings 文件，供 `claude --settings <file>` 使用。
+ * 不碰 ~/.claude/settings.json；调用方负责在退出后删除。
  */
-export function buildClaudeArgv(proxyBaseUrl: string, userArgs: string[]): string[] {
-  const override = buildSessionSettingsOverride(proxyBaseUrl)
-  return ['--settings', override, ...userArgs]
+export function writeSessionSettingsFile(proxyBaseUrl: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'vr-claude-'))
+  const file = join(dir, 'settings.json')
+  writeFileSync(file, `${buildSessionSettingsOverride(proxyBaseUrl)}\n`, 'utf8')
+  return file
+}
+
+/** 组装启动参数：`--settings <临时文件>` + 用户参数 */
+export function buildClaudeArgv(settingsFile: string, userArgs: string[]): string[] {
+  return ['--settings', settingsFile, ...userArgs]
+}
+
+function cleanupSettingsFile(file: string): void {
+  try {
+    rmSync(join(file, '..'), { recursive: true, force: true })
+  } catch {
+    try {
+      rmSync(file, { force: true })
+    } catch {}
+  }
 }
 
 /**
  * 启动会话改写并拉起 Claude Code。
- * - 不写 ~/.claude/settings.json（用 --settings 会话覆盖）
+ * - 不写 ~/.claude/settings.json（临时 --settings 文件）
  * - 不改模型名 / token / cc-switch 磁盘配置
  * - 出站经本机改写 → 原上游
  */
@@ -148,26 +167,31 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   const { config } = loadConfig()
   const { upstream, source } = resolveClaudeUpstream()
   const proxy = await startSessionProxy({ config, upstreamBaseUrl: upstream })
+  const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
 
   console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
-  console.error(pc.dim('用 --settings 覆盖 BASE_URL（不写盘）；退出后 cc-switch / settings 不变'))
+  console.error(pc.dim(`临时 --settings 文件（不改用户 settings）: ${settingsFile}`))
+  console.error(pc.dim('退出后自动删除临时文件；cc-switch / settings 不变'))
   console.error('')
 
   const bin = process.env.VISION_RELAY_CLAUDE_BIN || 'claude'
-  const argv = buildClaudeArgv(proxy.baseUrl, claudeArgs)
+  const argv = buildClaudeArgv(settingsFile, claudeArgs)
   const childEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxy.baseUrl,
   }
 
   const exitCode = await new Promise<number>((resolve) => {
+    // Windows 上 shell:true 会拆坏内联 JSON；现已改用文件路径，仍可用 shell 解析 PATH 里的 .cmd
     const child = spawn(bin, argv, {
       env: childEnv,
       stdio: 'inherit',
-      shell: process.platform === 'win32',
+      shell: isWindows(),
+      windowsHide: true,
     })
     const shutdown = async (code: number) => {
+      cleanupSettingsFile(settingsFile)
       try {
         await proxy.close()
       } catch {}

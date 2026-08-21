@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
+import { claudeConfigDir, userHome } from './paths.js'
 
 export const DEFAULT_MAX_IMAGE_BYTES = 100 * 1024 * 1024
 export const DEFAULT_TARGET_IMAGE_BYTES = 5 * 1024 * 1024
@@ -38,7 +38,7 @@ export function mediaTypeFor(value: string): string | undefined {
 }
 
 function expandPath(value: string, cwd: string): string {
-  if (value.startsWith('~')) return join(homedir(), value.slice(1))
+  if (value.startsWith('~')) return join(userHome(), value.slice(1))
   if (isAbsolute(value)) return value
   return resolve(cwd, value)
 }
@@ -163,7 +163,7 @@ export async function prepareImage(image: ImageInput, limits: ImageLimits): Prom
 
 /** Claude Code 粘贴图缓存根目录 */
 export function claudeImageCacheRoot(): string {
-  return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'image-cache')
+  return join(claudeConfigDir(), 'image-cache')
 }
 
 /**
