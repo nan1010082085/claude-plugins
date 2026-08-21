@@ -87,3 +87,4 @@
 | 0.4.0 | Cursor 接线：setupCursor() 写 ~/.cursor/mcp.json（MCP 通道，无 hook） |
 | 0.5.0 | test/doctor 诊断输出增强 |
 | 0.9.0 | **命令优先**：`describe` CLI + `/vision` 两段式；删除出口劫持代理；setup 覆盖更新命令模板；npm 发布 |
+| 0.9.1 | 文档同步：README / design / e2e 与命令优先架构对齐 |

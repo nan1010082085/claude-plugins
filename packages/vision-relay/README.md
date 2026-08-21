@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**  
-当前版本：**0.9.0**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.9.1**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）无法看图时，vision-relay 先调你配置的视觉模型出文字描述，再交给编码模型回答。支持 Claude Code / Codex / opencode / Cursor。
 
