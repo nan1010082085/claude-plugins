@@ -1,43 +1,42 @@
 ---
-description: 先视觉识别图片，再据此回答（vision-relay）
-argument-hint: <图片路径或URL或#N> [问题]
+description: 先视觉识别图片，再据此回答（vision-relay）— 请勿附带图片附件
+argument-hint: <图片路径或URL> [问题]
 ---
 用户请求：$ARGUMENTS
 
-你是**无视觉能力**的编码助手。必须严格按两段式执行，禁止跳过第 1 段直接猜图或凭文件名编造内容。
+## 硬限制（Claude Code / Codex 都一样）
 
-## 重要限制（粘贴图）
+当前编码模型**不支持图像输入**。
 
-若本条消息里**仍带有粘贴的图片二进制**（界面出现图片预览 / `[Image #N]` 且图片已附在消息上），无视觉编码模型会直接 **400 Model only support text input**——hook/命令都无法删掉 API 请求里的 image block。
+- **Codex**：输入框里粘贴/附加图片 → 客户端直接拦「此模型不支持图像输入」，MCP / 自定义 prompt **根本不会跑到**。
+- **Claude Code**：粘贴图会把 Image block 发给模型 → `400 Model only support text input`。
 
-**正确做法：** 不要在同一条消息里再粘贴图。只用路径发纯文本，例如：
-- `/vision ./screenshot.png 看看图片是什么`
-- 或先：`vision-relay describe "#1" -q "看看图片是什么"`（读最近一次粘贴缓存），再把 stdout 贴回对话
+因此：**禁止在同一条消息里附带图片。** 只用纯文本路径：
 
-## 第 1 段：视觉识别（必须先完成）
-
-从 `$ARGUMENTS` 解析图片与可选问题。
-
-**优先** Bash（stdout 即描述）：
-
-```bash
-# 文件路径或 URL
-vision-relay describe "<图片路径或URL>" -q "<问题>"
-
-# 仅有 [Image #N] 占位、且要用缓存文件时（消息中请勿再次粘贴该图）
-vision-relay describe "#N" -q "<问题>"
+```
+/vision ./screenshots/error.png 这个报错怎么修
 ```
 
-无全局命令时：`npx -y vision-relay describe ...`
+（Codex 桌面端自定义 prompt 名可能是 `/prompts:vision`，用法相同：后面只跟路径和问题，不要附图。）
 
-备选：MCP `vision_describe`（`path` / `url` / `question`）。
+也可先在终端识别，再把文字贴回对话：
 
-- 失败或配置不完整 → `/vision-config` 或 `vision-relay init`，不要编造图片内容。
-- 无路径/URL/`#N`：提醒 `/vision ./error.png 这个报错怎么修`
-- 上下文已有 `[vision-relay 图片 #N]` 注入：可跳过第 1 段，直接用该描述。
+```bash
+vision-relay describe ./screenshots/error.png -q "这个报错怎么修"
+```
 
-## 第 2 段：编码回答（仅基于描述）
+## 两段式（必须先识别再回答）
 
-1. **只依据描述**回答。
-2. 不够则换更具体的 `-q` 再跑第 1 段。
-3. 不要假装「看到了图」；可引用描述中的关键原文。
+你是无视觉编码助手，禁止猜图。
+
+### 第 1 段：视觉识别
+
+```bash
+vision-relay describe "<图片路径或URL>" -q "<问题>"
+```
+
+备选：MCP `vision_describe`（`path` / `url` + `question`）。
+
+### 第 2 段：编码回答
+
+只根据第 1 段文字描述回答；不够则换更具体的 question 再识别一次。

@@ -1,9 +1,23 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**  
-当前版本：**0.9.2**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.10.1**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）无法看图时，vision-relay 先调你配置的视觉模型出文字描述，再交给编码模型回答。支持 Claude Code / Codex / opencode / Cursor。
+
+## 对话内粘贴（会话包装）
+
+路径/`/vision` 之外，若要在对话里直接粘贴且上游是纯文本模型：
+
+```bash
+vision-relay claude          # 可跟 claude 参数，如 vision-relay claude -c
+```
+
+- 仅本进程临时 `ANTHROPIC_BASE_URL` → 本机改写 → 原编码上游（cc-switch / settings）
+- 通过 `claude --settings` **会话覆盖**出口（因 settings.env 会盖掉普通环境变量）；**不写盘**
+- Claude 退出后改写停止；cc-switch 配置不变
+- 启动前检查见 `vision-relay doctor`「会话包装」一节
+- 对话里**粘贴或拖图**都会带 Image block，必须走本包装才能破纯文本上游 400
 
 ## 安装
 
@@ -52,9 +66,10 @@ vision-relay describe ./screenshots/error.png -q "逐字转录报错"
 |------|------|
 | `init` | 配置视觉模型并测连通 |
 | `setup` | 接线各终端；**覆盖更新** `/vision` 模板 |
+| `claude` | 会话包装启动 Claude（粘贴改写；不写 settings） |
 | `describe <图> [-q 问题]` | 同步识别，stdout 输出描述 |
 | `test` | 1x1 测试图验证视觉 API |
-| `doctor` | 配置与接线诊断 |
+| `doctor` | 配置、接线与会话包装诊断 |
 
 ### 斜杠命令
 

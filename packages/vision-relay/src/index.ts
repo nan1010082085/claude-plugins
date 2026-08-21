@@ -9,6 +9,7 @@ import { runMcpServer } from './mcp.js'
 import { setupAllDetected, setupInteractive } from './setup.js'
 import { initWizard, testConnection } from './tui.js'
 import { doctor } from './doctor.js'
+import { runClaudeWrapped } from './wrap-claude.js'
 
 const require = createRequire(import.meta.url)
 const { version, description } = require('../package.json') as {
@@ -68,6 +69,21 @@ program
   .command('doctor')
   .description('检查配置完整性与各终端接线状态')
   .action(async () => doctor())
+
+program
+  .command('claude')
+  .description(
+    '会话级粘贴改写：临时本地改写后启动 Claude（不写 settings；退出即停）',
+  )
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+  .helpOption(false)
+  .action(async () => {
+    const raw = process.argv
+    const idx = raw.findIndex((a, i) => i > 1 && a === 'claude')
+    const passthrough = idx >= 0 ? raw.slice(idx + 1) : []
+    process.exitCode = await runClaudeWrapped(passthrough)
+  })
 
 program
   .command('mcp', { hidden: true })

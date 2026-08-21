@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import pc from 'picocolors'
 import { configPath, loadConfig, validateConfig } from './config.js'
 import { detectTerminals, TERMINAL_LABELS, type TerminalId } from './setup.js'
+import { checkClaudeWrapReady, isLoopbackBaseUrl } from './wrap-claude.js'
 
 interface WiringResult {
   ok: boolean
@@ -121,5 +122,36 @@ export async function doctor(): Promise<void> {
       const mark = d.ok ? pc.green('✓') : pc.yellow('·')
       console.log(`      ${mark} ${pc.dim(`${d.label}: ${d.path}`)}`)
     }
+  }
+
+  console.log(pc.bold('\n会话包装（vision-relay claude）'))
+  console.log(
+    pc.dim('  对话内粘贴改写：临时 ANTHROPIC_BASE_URL→本机，不写 settings / 不改 cc-switch 模型'),
+  )
+  const wrap = checkClaudeWrapReady()
+  for (const i of wrap.items) {
+    check(i.label, i.ok, i.detail)
+  }
+  // 残留本机 BASE_URL 警告（旧常驻代理）
+  const settingsPath = join(homedir(), '.claude', 'settings.json')
+  try {
+    if (existsSync(settingsPath)) {
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+        env?: Record<string, string>
+      }
+      const base = settings.env?.ANTHROPIC_BASE_URL
+      if (base && isLoopbackBaseUrl(base)) {
+        check(
+          'settings 无本机 BASE_URL 残留',
+          false,
+          `${base} — 请用 cc-switch 恢复真实上游，否则包装无法启动`,
+        )
+      } else if (base) {
+        check('settings BASE_URL 非本机', true, base)
+      }
+    }
+  } catch {}
+  if (wrap.ok) {
+    console.log(pc.dim('\n  用法: vision-relay claude   # 然后在对话里粘贴图片'))
   }
 }

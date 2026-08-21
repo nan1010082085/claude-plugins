@@ -88,3 +88,5 @@
 | 0.5.0 | test/doctor 诊断输出增强 |
 | 0.9.0 | **命令优先**：`describe` CLI + `/vision` 两段式；删除出口劫持代理；setup 覆盖更新命令模板；npm 发布 |
 | 0.9.1 | 文档同步：README / design / e2e 与命令优先架构对齐 |
+| 0.10.0 | **`vision-relay claude` 会话包装**：临时本机改写粘贴 Image→文字；不写 settings；doctor 会话检查；SSRF/环路加固 |
+| 0.10.1 | 修复：用 `claude --settings` 覆盖 BASE_URL（settings.env 会盖掉进程环境）；拖图/粘贴同为 Image block |

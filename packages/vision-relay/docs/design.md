@@ -1,29 +1,24 @@
 # vision-relay 设计与测试方案
 
-> 状态：**v0.9.1 主通道 = 命令优先（describe）+ MCP + hook；代理代码已删除。**
+> 状态：**v0.10.0** = describe/MCP/hook + **`vision-relay claude` 会话级粘贴改写**（不写 settings）。
 >
-> 2026-08-20 从零开发；2026-08-21 否定并移除「劫持出口」代理。
+> 2026-08-20 从零开发；曾实现常驻代理后删除；2026-08-21 以「包装启动、退出即停」恢复粘贴改写能力。
 
 ## 1. 问题
 
 在 Claude Code / Codex / opencode 等编码 CLI 中使用无视觉能力的编码模型时，用户提供的图片（截图、设计稿、报错图）模型无法理解。
 
-## 2. 架构：命令优先 + MCP + hook（无常驻进程）
-
-**决策记录：** 早期方案曾考虑本地 HTTP 代理拦截 API 改写图片块；实践证明会劫持整条出口且不可靠，**已删除**。主通道为 `/vision`（优先 `describe` CLI）+ MCP + hook。
+## 2. 架构
 
 ```
 用户看图
    │
-   ├─ /vision <图> <问题>     【推荐主路径】
-   │     编码模型先 Bash: vision-relay describe … → 视觉模型文字
-   │     再仅依据描述回答 / 改代码
+   ├─ vision-relay claude     【对话内粘贴】会话进程临时改写出站 Image→文字
+   │     不写 settings；上游=cc-switch 原 ANTHROPIC_BASE_URL；退出即停
    │
-   ├─ MCP vision_describe     【Cursor 主通道 / 备选】
-   │     agent 调工具拿描述 → tool result 进上下文
-   │
-   └─ Claude Code hook        【路径/URL / 粘贴 image-cache 自动注入】
-         UserPromptSubmit → vision-relay hook → additionalContext
+   ├─ /vision <图> <问题>     【路径/命令】
+   ├─ MCP vision_describe
+   └─ UserPromptSubmit hook   【路径/URL / image-cache 注入；不能单独破硬 400】
 ```
 
 ### 注入通道
