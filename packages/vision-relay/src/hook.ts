@@ -1,9 +1,11 @@
 import type { ImageInput } from './images.js'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { loadConfig, validateConfig } from './config.js'
-import { findImageRefs, mediaTypeFor, prepareImage, readImageRef } from './images.js'
+import {
+  findImageRefs,
+  loadClaudePastedImage,
+  prepareImage,
+  readImageRef,
+} from './images.js'
 import { describeImage } from './vision.js'
 
 /** 检测 prompt 中的 [Pasted text #N] / [Audio #N] 等无法解析的内联引用（不含 Image） */
@@ -20,41 +22,8 @@ function detectImageRefNums(prompt: string): number[] {
   return [...new Set([...prompt.matchAll(IMAGE_REF_RE)].map((m) => Number(m[1])))]
 }
 
-/**
- * 解析 [Image #N] 对应的粘贴图片文件。
- * Claude Code 粘贴图片时已写入 ~/.claude/image-cache/<session_id>/N.png，
- * hook 拿 stdin 的 session_id 即可读到，无需用户做任何操作。
- */
 function resolvePastedImage(sessionId: string | undefined, n: number, maxBytes: number): ImageInput | null {
-  const cacheDir = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'image-cache')
-  const candidates: string[] = []
-  if (sessionId) candidates.push(join(cacheDir, sessionId))
-  else {
-    // 兜底：stdin 缺 session_id 时取最近更新的会话目录（并行会话有小概率误配，聊胜于无）
-    try {
-      const latest = readdirSync(cacheDir, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => ({ dir: join(cacheDir, e.name), mtime: statSync(join(cacheDir, e.name)).mtimeMs }))
-        .sort((a, b) => b.mtime - a.mtime)[0]
-      if (latest) candidates.push(latest.dir)
-    } catch {}
-  }
-  for (const dir of candidates) {
-    try {
-      // 文件名为 N.<ext>，实测为 png，按前缀匹配兼容其他格式
-      const file = readdirSync(dir).find((f) => /^\d+\.[a-z0-9]+$/i.test(f) && f.startsWith(`${n}.`))
-      if (!file) continue
-      const p = join(dir, file)
-      const size = statSync(p).size
-      if (size > maxBytes) continue
-      return {
-        data: readFileSync(p),
-        mediaType: mediaTypeFor(file) ?? 'image/png',
-        source: `粘贴图片 [Image #${n}]`,
-      }
-    } catch {}
-  }
-  return null
+  return loadClaudePastedImage(n, maxBytes, sessionId)
 }
 
 /** 从 stdin JSON 中提取 Claude Code 传入的图片数据（base64 content block） */

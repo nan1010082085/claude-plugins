@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -159,4 +159,59 @@ export async function prepareImage(image: ImageInput, limits: ImageLimits): Prom
     // jimp 解不了（svg/损坏等）：原样送出，由视觉 API 决定
     return image
   }
+}
+
+/** Claude Code 粘贴图缓存根目录 */
+export function claudeImageCacheRoot(): string {
+  return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'image-cache')
+}
+
+/**
+ * 解析 Claude Code `[Image #N]` 对应的落盘路径。
+ * 有 sessionId 用该目录；否则取最近更新的会话目录。
+ */
+export function resolveClaudePastedImagePath(n: number, sessionId?: string): string | null {
+  const cacheDir = claudeImageCacheRoot()
+  const candidates: string[] = []
+  if (sessionId) candidates.push(join(cacheDir, sessionId))
+  else {
+    try {
+      const latest = readdirSync(cacheDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => ({ dir: join(cacheDir, e.name), mtime: statSync(join(cacheDir, e.name)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)[0]
+      if (latest) candidates.push(latest.dir)
+    } catch {}
+  }
+  for (const dir of candidates) {
+    try {
+      const file = readdirSync(dir).find((f) => /^\d+\.[a-z0-9]+$/i.test(f) && f.startsWith(`${n}.`))
+      if (file) return join(dir, file)
+    } catch {}
+  }
+  return null
+}
+
+/** 读取粘贴缓存为 ImageInput；超 maxBytes 则返回 null */
+export function loadClaudePastedImage(n: number, maxBytes: number, sessionId?: string): ImageInput | null {
+  const p = resolveClaudePastedImagePath(n, sessionId)
+  if (!p) return null
+  try {
+    const size = statSync(p).size
+    if (size > maxBytes) return null
+    return {
+      data: readFileSync(p),
+      mediaType: mediaTypeFor(p) ?? 'image/png',
+      source: `粘贴图片 [Image #${n}]`,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 从用户输入解析粘贴序号：`#1` / `1` / `[Image #1]` */
+export function parsePastedImageRef(raw: string): number | null {
+  const s = raw.trim()
+  const m = s.match(/^\[Image #(\d+)\]$/i) || s.match(/^#(\d+)$/) || s.match(/^(\d+)$/)
+  return m ? Number(m[1]) : null
 }

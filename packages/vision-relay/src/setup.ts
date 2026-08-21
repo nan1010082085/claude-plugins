@@ -57,24 +57,64 @@ export function writeCommandFile(path: string, content: string): boolean {
   return true
 }
 
+/** Claude Code UserPromptSubmit：视觉识别常 >30s，必须显式拉高 timeout */
+export const CLAUDE_HOOK_TIMEOUT_SEC = 120
+
+/**
+ * 确保 settings 里 vision-relay hook 存在且 timeout 足够。
+ * 已存在但缺 timeout / 过短时就地修补（setup 幂等升级）。
+ */
+export function ensureClaudeVisionHook(settings: Record<string, unknown>): { changed: boolean; detail: string } {
+  const hookCmd = resolveCommand('hook')
+  const command = `${hookCmd.command} ${hookCmd.args.join(' ')}`
+  const hooksRoot = (settings.hooks ?? {}) as Record<string, unknown>
+  const entries = Array.isArray(hooksRoot['UserPromptSubmit'])
+    ? ([...hooksRoot['UserPromptSubmit']] as Array<Record<string, unknown>>)
+    : []
+
+  let changed = false
+  let found = false
+  for (const entry of entries) {
+    const list = Array.isArray(entry.hooks) ? (entry.hooks as Array<Record<string, unknown>>) : []
+    for (const h of list) {
+      if (typeof h.command === 'string' && h.command.includes('vision-relay')) {
+        found = true
+        const t = typeof h.timeout === 'number' ? h.timeout : 0
+        if (t < CLAUDE_HOOK_TIMEOUT_SEC) {
+          h.timeout = CLAUDE_HOOK_TIMEOUT_SEC
+          changed = true
+        }
+      }
+    }
+  }
+  if (!found) {
+    entries.push({
+      hooks: [{ type: 'command', command, timeout: CLAUDE_HOOK_TIMEOUT_SEC }],
+    })
+    changed = true
+  }
+  if (changed) {
+    hooksRoot['UserPromptSubmit'] = entries
+    settings.hooks = hooksRoot
+  }
+  return {
+    changed,
+    detail: found
+      ? `UserPromptSubmit hook timeout=${CLAUDE_HOOK_TIMEOUT_SEC}s`
+      : `UserPromptSubmit hook 已安装（timeout=${CLAUDE_HOOK_TIMEOUT_SEC}s）`,
+  }
+}
+
 // ---------- Claude Code ----------
 
 export function setupClaudeCode(): string[] {
   const log: string[] = []
   const settingsPath = join(homedir(), '.claude', 'settings.json')
   const settings = readJson(settingsPath)
-  const hooks = (settings.hooks ?? {}) as Record<string, unknown>
-  const hookCmd = resolveCommand('hook')
-  const entries = Array.isArray(hooks['UserPromptSubmit']) ? hooks['UserPromptSubmit'] : []
-  const already = JSON.stringify(entries).includes('vision-relay')
-  if (!already) {
-    hooks['UserPromptSubmit'] = [
-      ...entries,
-      { hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}`, timeout: 60 }] },
-    ]
-    settings.hooks = hooks
+  const hookFix = ensureClaudeVisionHook(settings)
+  if (hookFix.changed) {
     writeJson(settingsPath, settings)
-    log.push(`UserPromptSubmit hook -> ${settingsPath}`)
+    log.push(`${hookFix.detail} -> ${settingsPath}`)
   }
 
   const mcp = resolveCommand('mcp')
@@ -120,11 +160,35 @@ export function setupCodex(): string[] {
   if (!already) {
     hooks['UserPromptSubmit'] = [
       ...entries,
-      { matcher: '', hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}`, timeout: 60 }] },
+      {
+        matcher: '',
+        hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}`, timeout: 120 }],
+      },
     ]
     hooksJson.hooks = hooks
     writeJson(hooksPath, hooksJson)
     log.push(`UserPromptSubmit hook -> ${hooksPath}`)
+  } else {
+    // 抬高已有 vision-relay hook 的 timeout
+    let patched = false
+    for (const entry of entries as Array<Record<string, unknown>>) {
+      const list = Array.isArray(entry.hooks) ? (entry.hooks as Array<Record<string, unknown>>) : []
+      for (const h of list) {
+        if (typeof h.command === 'string' && h.command.includes('vision-relay')) {
+          const t = typeof h.timeout === 'number' ? h.timeout : 0
+          if (t < 120) {
+            h.timeout = 120
+            patched = true
+          }
+        }
+      }
+    }
+    if (patched) {
+      hooks['UserPromptSubmit'] = entries
+      hooksJson.hooks = hooks
+      writeJson(hooksPath, hooksJson)
+      log.push(`Codex hook timeout=120s -> ${hooksPath}`)
+    }
   }
 
   const promptPath = join(homedir(), '.codex', 'prompts', 'vision.md')

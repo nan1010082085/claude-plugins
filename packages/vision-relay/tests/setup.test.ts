@@ -2,7 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { loadBundledCommand, setupClaudeCode, setupCursor, writeCommandFile } from '../src/setup.js'
+import {
+  ensureClaudeVisionHook,
+  loadBundledCommand,
+  setupClaudeCode,
+  setupCursor,
+  writeCommandFile,
+} from '../src/setup.js'
 
 let home: string
 let realHome: string
@@ -20,6 +26,33 @@ afterEach(() => {
 function mcpJsonPath(): string {
   return join(home, '.cursor', 'mcp.json')
 }
+
+describe('ensureClaudeVisionHook', () => {
+  it('补上缺失的 timeout', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'vision-relay hook' }] }],
+      },
+    }
+    const r = ensureClaudeVisionHook(settings)
+    expect(r.changed).toBe(true)
+    const h = (settings.hooks as { UserPromptSubmit: Array<{ hooks: Array<{ timeout: number }> }> }).UserPromptSubmit[0]
+      .hooks[0]
+    expect(h.timeout).toBe(120)
+  })
+
+  it('过短 timeout 抬到 120', () => {
+    const settings: Record<string, unknown> = {
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'vision-relay hook', timeout: 30 }] }],
+      },
+    }
+    expect(ensureClaudeVisionHook(settings).changed).toBe(true)
+    const h = (settings.hooks as { UserPromptSubmit: Array<{ hooks: Array<{ timeout: number }> }> }).UserPromptSubmit[0]
+      .hooks[0]
+    expect(h.timeout).toBe(120)
+  })
+})
 
 describe('writeCommandFile / 命令模板', () => {
   it('覆盖更新旧版 /vision 模板', () => {
@@ -42,6 +75,8 @@ describe('setupClaudeCode 命令同步', () => {
     const path = join(home, '.claude', 'commands', 'vision.md')
     expect(existsSync(path)).toBe(true)
     expect(readFileSync(path, 'utf8')).toContain('vision-relay describe')
+    const settings = JSON.parse(readFileSync(join(home, '.claude', 'settings.json'), 'utf8'))
+    expect(JSON.stringify(settings)).toContain('timeout')
   })
 })
 

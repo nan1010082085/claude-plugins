@@ -36,8 +36,8 @@ program
 
 program
   .command('describe')
-  .description('识别一张图片并打印文字描述（供 /vision 命令 Bash 优先调用）')
-  .argument('<image>', '本地图片路径或 http(s) URL')
+  .description('识别图片并打印描述（路径 / URL / #N 粘贴缓存）')
+  .argument('<image>', '本地路径、http(s) URL，或 #1 / [Image #1]（Claude 粘贴缓存）')
   .option('-q, --question <text>', '针对图片的问题（作为识别提示词）')
   .action(async (image: string, opts: { question?: string }) => {
     process.exitCode = await describeCli({ image, question: opts.question })

@@ -1,6 +1,6 @@
 {
   "name": "vision-relay",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "为无视觉能力的编码模型中转图片理解：命令优先（describe）+ MCP，支持 Claude Code / Codex / Cursor",
   "type": "module",
   "license": "MIT",

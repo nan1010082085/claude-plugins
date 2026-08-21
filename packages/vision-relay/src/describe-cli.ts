@@ -1,10 +1,15 @@
 import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
-import { prepareImage, readImageRef } from './images.js'
+import {
+  parsePastedImageRef,
+  prepareImage,
+  readImageRef,
+  resolveClaudePastedImagePath,
+} from './images.js'
 import { describeImage } from './vision.js'
 
 export interface DescribeCliOptions {
-  /** 图片路径或 URL */
+  /** 图片路径、URL，或粘贴引用 `#1` / `[Image #1]` */
   image: string
   question?: string
 }
@@ -16,7 +21,11 @@ export interface DescribeCliOptions {
 export async function describeCli(opts: DescribeCliOptions): Promise<number> {
   const image = opts.image?.trim()
   if (!image) {
-    process.stderr.write('用法: vision-relay describe <图片路径或URL> [-q 问题]\n')
+    process.stderr.write(
+      '用法: vision-relay describe <图片路径|URL|#N> [-q 问题]\n' +
+        '  例: vision-relay describe ./a.png -q "报错是什么"\n' +
+        '  例: vision-relay describe "#1" -q "图片是什么"   # 读 Claude Code 最近粘贴缓存\n',
+    )
     return 1
   }
   try {
@@ -30,8 +39,26 @@ export async function describeCli(opts: DescribeCliOptions): Promise<number> {
       process.stderr.write(pc.yellow(`配置不完整: ${errs.join('; ')}\n`))
       return 1
     }
-    const kind = /^https?:\/\//i.test(image) ? 'url' : 'path'
-    const input = await readImageRef({ kind, value: image }, process.cwd(), config.vision.maxImageBytes)
+
+    let pathOrUrl = image
+    const pasted = parsePastedImageRef(image)
+    if (pasted !== null) {
+      const cached = resolveClaudePastedImagePath(pasted)
+      if (!cached) {
+        process.stderr.write(
+          pc.yellow(
+            `未找到粘贴缓存 [Image #${pasted}]。请用文件路径：vision-relay describe ./xxx.png\n` +
+              `（缓存目录: ~/.claude/image-cache/<session>/N.png）\n`,
+          ),
+        )
+        return 1
+      }
+      pathOrUrl = cached
+      process.stderr.write(pc.dim(`[vision-relay] 使用粘贴缓存: ${cached}\n`))
+    }
+
+    const kind = /^https?:\/\//i.test(pathOrUrl) ? 'url' : 'path'
+    const input = await readImageRef({ kind, value: pathOrUrl }, process.cwd(), config.vision.maxImageBytes)
     const prepared = await prepareImage(input, {
       targetBytes: config.vision.targetImageBytes,
       maxEdge: config.vision.maxImageEdge,
