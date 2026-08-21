@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**  
-当前版本：**0.10.1**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.10.2**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）无法看图时，vision-relay 先调你配置的视觉模型出文字描述，再交给编码模型回答。支持 Claude Code / Codex / opencode / Cursor。
 
@@ -47,6 +47,8 @@ npx vision-relay setup
 
 ```
 /vision ./screenshots/error.png 这个报错是什么原因
+/vision clipboard 屏幕上写了什么          # 先截图到剪贴板，勿贴进对话
+/vision recent 最近一张图里有什么
 ```
 
 固定流程：
@@ -54,10 +56,13 @@ npx vision-relay setup
 1. **视觉**：Bash 执行 `vision-relay describe <图> -q "<问题>"`（或 MCP `vision_describe`）  
 2. **编码**：只根据描述回答 / 改代码，禁止猜图  
 
+`<图>` 可为：本地路径、URL、`clipboard`、`recent`、`#N`（Claude image-cache）。
+
 终端直接识别：
 
 ```bash
 vision-relay describe ./screenshots/error.png -q "逐字转录报错"
+vision-relay describe clipboard -q "报错全文"
 ```
 
 ### CLI

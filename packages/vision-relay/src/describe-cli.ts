@@ -1,15 +1,11 @@
 import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
-import {
-  parsePastedImageRef,
-  prepareImage,
-  readImageRef,
-  resolveClaudePastedImagePath,
-} from './images.js'
+import { prepareImage } from './images.js'
+import { resolveImageInput } from './resolve-source.js'
 import { describeImage } from './vision.js'
 
 export interface DescribeCliOptions {
-  /** 图片路径、URL，或粘贴引用 `#1` / `[Image #1]` */
+  /** 图片路径、URL、clipboard、recent，或粘贴引用 `#N` */
   image: string
   question?: string
 }
@@ -22,9 +18,11 @@ export async function describeCli(opts: DescribeCliOptions): Promise<number> {
   const image = opts.image?.trim()
   if (!image) {
     process.stderr.write(
-      '用法: vision-relay describe <图片路径|URL|#N> [-q 问题]\n' +
+      '用法: vision-relay describe <图片路径|URL|clipboard|recent|#N> [-q 问题]\n' +
         '  例: vision-relay describe ./a.png -q "报错是什么"\n' +
-        '  例: vision-relay describe "#1" -q "图片是什么"   # 读 Claude Code 最近粘贴缓存\n',
+        '  例: vision-relay describe clipboard -q "屏幕上写了什么"\n' +
+        '  例: vision-relay describe recent -q "最近一张图"\n' +
+        '  例: vision-relay describe "#1" -q "图片是什么"\n',
     )
     return 1
   }
@@ -40,26 +38,15 @@ export async function describeCli(opts: DescribeCliOptions): Promise<number> {
       return 1
     }
 
-    let pathOrUrl = image
-    const pasted = parsePastedImageRef(image)
-    if (pasted !== null) {
-      const cached = resolveClaudePastedImagePath(pasted)
-      if (!cached) {
-        process.stderr.write(
-          pc.yellow(
-            `未找到粘贴缓存 [Image #${pasted}]。请用文件路径：vision-relay describe ./xxx.png\n` +
-              `（缓存目录: ~/.claude/image-cache/<session>/N.png）\n`,
-          ),
-        )
-        return 1
-      }
-      pathOrUrl = cached
-      process.stderr.write(pc.dim(`[vision-relay] 使用粘贴缓存: ${cached}\n`))
+    const resolved = await resolveImageInput({
+      path: image,
+      maxBytes: config.vision.maxImageBytes,
+    })
+    if (resolved.kind !== 'path' && resolved.kind !== 'url') {
+      process.stderr.write(pc.dim(`[vision-relay] ${resolved.label}\n`))
     }
 
-    const kind = /^https?:\/\//i.test(pathOrUrl) ? 'url' : 'path'
-    const input = await readImageRef({ kind, value: pathOrUrl }, process.cwd(), config.vision.maxImageBytes)
-    const prepared = await prepareImage(input, {
+    const prepared = await prepareImage(resolved.image, {
       targetBytes: config.vision.targetImageBytes,
       maxEdge: config.vision.maxImageEdge,
     })

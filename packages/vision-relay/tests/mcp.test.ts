@@ -61,7 +61,7 @@ describe('MCP tools/call 工具名校验（回归）', () => {
     })
     const resp = JSON.parse(outputs[0]!) as { result: { isError: boolean; content: { text: string }[] } }
     expect(resp.result.isError).toBe(true)
-    expect(resp.result.content[0]!.text).toContain('必须提供 path、url 或 image_data')
+    expect(resp.result.content[0]!.text).toContain('必须提供 path、url、image_data')
   })
 
   it('识别失败时返回 isError（路径不存在）', async () => {

@@ -90,3 +90,4 @@
 | 0.9.1 | 文档同步：README / design / e2e 与命令优先架构对齐 |
 | 0.10.0 | **`vision-relay claude` 会话包装**：临时本机改写粘贴 Image→文字；不写 settings；doctor 会话检查；SSRF/环路加固 |
 | 0.10.1 | 修复：用 `claude --settings` 覆盖 BASE_URL（settings.env 会盖掉进程环境）；拖图/粘贴同为 Image block |
+| 0.10.2 | 优化 `/vision` + MCP：支持 clipboard / recent / #N；命令模板强调勿附图、两段式更可执行 |

@@ -38,7 +38,7 @@ program
 program
   .command('describe')
   .description('识别图片并打印描述（路径 / URL / #N 粘贴缓存）')
-  .argument('<image>', '本地路径、http(s) URL，或 #1 / [Image #1]（Claude 粘贴缓存）')
+  .argument('<image>', '本地路径、URL、clipboard、recent，或 #1 / [Image #1]')
   .option('-q, --question <text>', '针对图片的问题（作为识别提示词）')
   .action(async (image: string, opts: { question?: string }) => {
     process.exitCode = await describeCli({ image, question: opts.question })
