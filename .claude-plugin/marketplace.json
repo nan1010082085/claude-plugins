@@ -7,6 +7,12 @@
       "source": "./packages/vision-relay",
       "description": "为无视觉能力的编码模型中转图片理解，支持 OpenAI / Anthropic 两种协议，大图自动压缩",
       "version": "0.1.9"
+    },
+    {
+      "name": "commit-flow",
+      "source": "./packages/commit-flow",
+      "description": "快捷 Commit / Commit & Push / Push：分类器模板 + 详细 why/impact，Push 需确认",
+      "version": "0.1.0"
     }
   ]
 }

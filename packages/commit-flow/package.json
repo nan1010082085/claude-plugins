@@ -1,0 +1,50 @@
+{
+  "name": "commit-flow",
+  "version": "0.1.0",
+  "description": "Claude Code 快捷 Commit / Commit & Push / Push：分类器模板 + 详细 why/impact",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "commit-flow": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    ".claude-plugin",
+    "commands",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nan1010082085/claude-plugins.git",
+    "directory": "packages/commit-flow"
+  },
+  "keywords": [
+    "claude-code",
+    "git",
+    "commit",
+    "conventional-commits",
+    "push"
+  ]
+}

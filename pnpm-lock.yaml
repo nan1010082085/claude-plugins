@@ -8,6 +8,28 @@ importers:
 
   .: {}
 
+  packages/commit-flow:
+    dependencies:
+      commander:
+        specifier: ^14.0.0
+        version: 14.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.13.3
+      tsup:
+        specifier: ^8.5.0
+        version: 8.5.1(postcss@8.5.26)(tsx@4.23.12)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.12
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.12)
+
   packages/vision-relay:
     dependencies:
       '@clack/prompts':
