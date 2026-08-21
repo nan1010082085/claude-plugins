@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { loadConfig, validateConfig } from './config.js'
 import { prepareImage } from './images.js'
 import { resolveImageInput } from './resolve-source.js'
+import { formatToolResultHeader } from './user-info.js'
 import { describeImage } from './vision.js'
 
 const require = createRequire(import.meta.url)
@@ -87,9 +88,25 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
       targetBytes: config.vision.targetImageBytes,
       maxEdge: config.vision.maxImageEdge,
     })
+    const started = Date.now()
     const text = await describeImage(config.vision, prepared, question)
-    const header = `[vision-relay] source=${resolved.label}\n`
-    return { content: [{ type: 'text', text: header + text }] }
+    const header = formatToolResultHeader({
+      source: resolved.label,
+      model: config.vision.model,
+      ms: Date.now() - started,
+      chars: text.length,
+    })
+    return {
+      content: [
+        {
+          type: 'text',
+          text:
+            `${header}\n` +
+            `（请先用一两句告知用户：视觉识别已完成，再根据下方描述回答）\n\n` +
+            text,
+        },
+      ],
+    }
   } catch (e) {
     return { content: [{ type: 'text', text: `[vision-relay] 错误: ${(e as Error).message}` }], isError: true }
   }

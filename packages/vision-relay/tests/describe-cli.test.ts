@@ -52,6 +52,7 @@ describe('describeCli', () => {
       const code = await describeCli({ image: 'a.png', question: '按钮什么颜色' })
       expect(code).toBe(0)
       expect(chunks.join('')).toContain('红色按钮')
+      expect(chunks.join('')).toContain('✓ 已识别')
       expect(describeImageMock).toHaveBeenCalled()
       expect(describeImageMock.mock.calls[0][2]).toBe('按钮什么颜色')
     } finally {

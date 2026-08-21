@@ -155,7 +155,12 @@ async function handleRequest(
       res.end(JSON.stringify({ error: { message: '对话接口请求体必须是合法 JSON' } }))
       return
     }
-    const { body } = await rewriteRequestBody(ctx.config, parsed, ctx.cache)
+    const { body, rewritten } = await rewriteRequestBody(ctx.config, parsed, ctx.cache)
+    if (rewritten > 0) {
+      process.stderr.write(
+        `[vision-relay] ✓ 会话改写: 已将 ${rewritten} 张图转为文字并转发上游\n`,
+      )
+    }
     forwardBody = Buffer.from(JSON.stringify(body), 'utf8')
   }
 

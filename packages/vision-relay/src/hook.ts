@@ -6,6 +6,7 @@ import {
   prepareImage,
   readImageRef,
 } from './images.js'
+import { formatVisionBrief } from './user-info.js'
 import { describeImage } from './vision.js'
 
 /** 检测 prompt 中的 [Pasted text #N] / [Audio #N] 等无法解析的内联引用（不含 Image） */
@@ -70,12 +71,39 @@ function readStdin(): Promise<string> {
 }
 
 export interface HookResult {
+  /** 注入模型的详细描述（用户通常看不到全文） */
   additionalContext: string | null
+  /** 展示给用户的简略提示（Claude Code systemMessage） */
+  systemMessage: string | null
+}
+
+function emptyHook(): HookResult {
+  return { additionalContext: null, systemMessage: null }
+}
+
+function summarizeResults(
+  sources: string[],
+  results: PromiseSettledResult<string>[],
+  model?: string,
+  ms?: number,
+): { ok: number; fail: number; systemMessage: string } {
+  let ok = 0
+  let fail = 0
+  for (const r of results) {
+    if (r.status === 'fulfilled') ok++
+    else fail++
+  }
+  return {
+    ok,
+    fail,
+    systemMessage: formatVisionBrief({ ok, fail, sources, model, ms }),
+  }
 }
 
 /**
  * Claude Code UserPromptSubmit hook：扫描 prompt 中的图片路径/URL，
- * 并行调视觉模型，把描述作为 additionalContext 注入对话。
+ * 并行调视觉模型，把描述作为 additionalContext 注入对话；
+ * 同时用 systemMessage 给用户一行简报（additionalContext 默认不进聊天可见区）。
  * 铁律：hook 永不抛错、永不阻塞用户会话（任何内部失败都静默降级）。
  */
 export async function runClaudeCodeHook(input: string, cwd: string): Promise<HookResult> {
@@ -101,13 +129,14 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
       writeFileSync(`${logDir}/hook-structure.json`, JSON.stringify(structure, null, 2))
     }
     const { config } = loadConfig()
-    if (!config.hook.enabled) return { additionalContext: null }
+    if (!config.hook.enabled) return emptyHook()
     // 配置问题不该阻塞用户会话，静默跳过
-    if (validateConfig(config).length) return { additionalContext: null }
+    if (validateConfig(config).length) return emptyHook()
 
     // 三种图片来源：1) stdin 中的 inline base64 图片 2) [Image #N] 粘贴缓存 3) prompt 中的路径/URL 引用
     const inlineImages = rawParsed ? extractInlineImages(rawParsed) : []
     const refs = findImageRefs(prompt, cwd)
+    const started = Date.now()
 
     // stdin 有 inline 图片时，直接用 base64 数据
     if (inlineImages.length) {
@@ -127,7 +156,16 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
           ? `[vision-relay 图片 #${i + 1}: ${img.source}]\n${r.value}`
           : `[vision-relay 图片 #${i + 1}: ${img.source}] 识别失败: ${(r.reason as Error).message}`
       })
-      return { additionalContext: parts.join('\n\n') }
+      const sum = summarizeResults(
+        limited.map((i) => i.source),
+        results,
+        config.vision.model,
+        Date.now() - started,
+      )
+      return {
+        additionalContext: parts.join('\n\n'),
+        systemMessage: sum.systemMessage,
+      }
     }
 
     // [Image #N] 粘贴图片：从 image-cache 读取，用户粘贴即可用，无需任何额外操作
@@ -147,14 +185,18 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
       // 粘贴图片缓存缺失（会话已清理/过期）或其他无法解析的内联引用时才提示
       const inlineRefs = detectInlineRefs(prompt)
       if (imageNums.length || inlineRefs.length) {
+        const refsLabel = [...imageNums.map((n) => `[Image #${n}]`), ...inlineRefs].join('、')
         const hint = [
-          `[vision-relay] 用户消息包含内联引用（${[...imageNums.map((n) => `[Image #${n}]`), ...inlineRefs].join('、')}），但未能获取其内容。`,
+          `[vision-relay] 用户消息包含内联引用（${refsLabel}），但未能获取其内容。`,
           '粘贴图片的缓存已失效时，可让用户改用图片文件路径或 URL 重新发送，例如：',
           '  /vision ./screenshot.png 这个报错怎么修',
         ].join('\n')
-        return { additionalContext: hint }
+        return {
+          additionalContext: hint,
+          systemMessage: `[vision-relay] ⚠ 未能读取内联图片（${refsLabel}），请改用 /vision <路径|clipboard>`,
+        }
       }
-      return { additionalContext: null }
+      return emptyHook()
     }
 
     const results = await Promise.allSettled(
@@ -173,21 +215,34 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
         ? `[vision-relay 图片 #${i + 1}: ${task.source}]\n${r.value}`
         : `[vision-relay 图片 #${i + 1}: ${task.source}] 识别失败: ${(r.reason as Error).message}`
     })
-    return { additionalContext: parts.join('\n\n') }
+    const sum = summarizeResults(
+      tasks.map((t) => t.source),
+      results,
+      config.vision.model,
+      Date.now() - started,
+    )
+    return {
+      additionalContext: parts.join('\n\n'),
+      systemMessage: sum.systemMessage,
+    }
   } catch {
-    return { additionalContext: null }
+    return emptyHook()
   }
 }
 
 export async function hookMain(): Promise<void> {
   const input = await readStdin()
-  const { additionalContext } = await runClaudeCodeHook(input, process.cwd())
+  const { additionalContext, systemMessage } = await runClaudeCodeHook(input, process.cwd())
+  if (!additionalContext && !systemMessage) return
+  // systemMessage：用户可见简报；additionalContext：仅注入模型
+  const out: Record<string, unknown> = {}
+  if (systemMessage) out.systemMessage = systemMessage
   if (additionalContext) {
-    process.stdout.write(
-      JSON.stringify({
-        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext },
-      }),
-    )
+    out.hookSpecificOutput = {
+      hookEventName: 'UserPromptSubmit',
+      additionalContext,
+    }
   }
-  // 无图片或失败时静默 exit 0，绝不阻塞用户
+  process.stdout.write(JSON.stringify(out))
+  // 无图片时静默 exit 0，绝不阻塞用户
 }

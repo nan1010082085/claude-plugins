@@ -230,7 +230,10 @@ async function describeBlock(
 }
 
 function textBlock(text: string): Record<string, unknown> {
-  return { type: 'text', text: `[vision-relay]\n${text}` }
+  return {
+    type: 'text',
+    text: `[vision-relay] ✓ 已将粘贴图转为文字描述（用户侧可见终端日志）\n${text}`,
+  }
 }
 
 /** 递归改写 content（string | block[]），图片块一律 → 文字块 */

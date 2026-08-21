@@ -95,6 +95,7 @@
 | 0.10.3 | 修复 setup 多选：默认全选 + required；空选回退；Windows/Git Bash 终端检测增强 |
 | 0.10.4 | 修复 `vision-relay claude`：Windows 上改用临时 settings 文件，避免 Invalid JSON provided to --settings |
 | 0.10.5 | Windows/mac 双端接线：USERPROFILE 主目录、hook 用 cmd /c、直写 ~/.claude.json MCP、Windows 跳过多选改一键确认 |
+| 0.10.6 | 识别完成时用户可见简报：hook `systemMessage`、MCP/describe 结果头、会话改写 stderr、/vision 要求先告知用户 |
 
 ## 用法验收清单（0.10.2）
 

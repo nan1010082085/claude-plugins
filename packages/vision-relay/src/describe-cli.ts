@@ -2,6 +2,7 @@ import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
 import { prepareImage } from './images.js'
 import { resolveImageInput } from './resolve-source.js'
+import { formatToolResultHeader } from './user-info.js'
 import { describeImage } from './vision.js'
 
 export interface DescribeCliOptions {
@@ -42,20 +43,28 @@ export async function describeCli(opts: DescribeCliOptions): Promise<number> {
       path: image,
       maxBytes: config.vision.maxImageBytes,
     })
-    if (resolved.kind !== 'path' && resolved.kind !== 'url') {
-      process.stderr.write(pc.dim(`[vision-relay] ${resolved.label}\n`))
-    }
+    process.stderr.write(pc.dim(`[vision-relay] 识别中: ${resolved.label} …\n`))
 
     const prepared = await prepareImage(resolved.image, {
       targetBytes: config.vision.targetImageBytes,
       maxEdge: config.vision.maxImageEdge,
     })
+    const started = Date.now()
     const text = await describeImage(config.vision, prepared, opts.question)
     if (!text.trim()) {
       process.stderr.write(pc.yellow('视觉模型返回空描述\n'))
       return 1
     }
-    process.stdout.write(text.endsWith('\n') ? text : `${text}\n`)
+    const ms = Date.now() - started
+    const brief = formatToolResultHeader({
+      source: resolved.label,
+      model: config.vision.model,
+      ms,
+      chars: text.length,
+    })
+    process.stderr.write(pc.green(`${brief}\n`))
+    // stdout：首行简报 + 空行 + 描述，便于 /vision 与用户在工具输出里看到状态
+    process.stdout.write(`${brief}\n\n${text.endsWith('\n') ? text : `${text}\n`}`)
     return 0
   } catch (e) {
     process.stderr.write(pc.red(`[vision-relay] ${(e as Error).message}\n`))
