@@ -8,33 +8,31 @@
 
 在 Claude Code / Codex / opencode 等编码 CLI 中使用无视觉能力的编码模型时，用户提供的图片（截图、设计稿、报错图）模型无法理解。
 
-## 2. 架构：中转模式（无常驻进程）
+## 2. 架构：命令优先 + MCP + hook（无常驻进程）
 
-**决策记录：** 早期方案曾考虑本地 HTTP 代理拦截 API 改写图片块；实践证明会劫持整条出口且不可靠，**已删除**。主通道为 hook + MCP + `/vision`（命令优先 `describe`）。
+**决策记录：** 早期方案曾考虑本地 HTTP 代理拦截 API 改写图片块；实践证明会劫持整条出口且不可靠，**已删除**。主通道为 `/vision`（优先 `describe` CLI）+ MCP + hook。
 
 ```
-用户在 CLI 输入（图片路径 / URL + 可选提示词）
+用户看图
    │
-   ├─ Claude Code ──► UserPromptSubmit hook
-   │     Claude Code 每次提交 prompt 自动拉起 `vision-relay hook`
-   │     hook 扫描 prompt 中的图片路径/URL → 识别 → additionalContext 注入上下文
+   ├─ /vision <图> <问题>     【推荐主路径】
+   │     编码模型先 Bash: vision-relay describe … → 视觉模型文字
+   │     再仅依据描述回答 / 改代码
    │
-   ├─ Codex ──► MCP 工具 + /vision 自定义命令
-   ├─ opencode ──► MCP 工具 + /vision 自定义命令
-   │     agent 看到图片引用时调用 vision_describe 工具，描述作为 tool result 进入上下文
-   ▼
-vision-relay（一次性进程，零守护）
-   读配置 → 读图/下载 → 超限自动压缩 → 调视觉模型 → 返回文字描述
+   ├─ MCP vision_describe     【Cursor 主通道 / 备选】
+   │     agent 调工具拿描述 → tool result 进上下文
+   │
+   └─ Claude Code hook        【路径/URL / 粘贴 image-cache 自动注入】
+         UserPromptSubmit → vision-relay hook → additionalContext
 ```
 
-### 三条注入通道
+### 注入通道
 
 | 通道 | 终端 | 机制 | 触发 |
 |------|------|------|------|
-| hook | Claude Code | `~/.claude/settings.json` UserPromptSubmit → `vision-relay hook` | prompt 文本含图片路径/URL 时自动注入 |
-| MCP 工具 | 三家都支持 | `vision-relay mcp`（stdio JSON-RPC）→ `vision_describe` | agent 调用，支持 path/url + question |
-| 命令 | Claude Code / Codex / opencode | `/vision <图片> <提示词>` 自定义命令模板 | 用户显式发起，提示词自定义 |
-| MCP 工具 | Codex / opencode / **Cursor** | 同上 | Cursor 的 hooks 无 UserPromptSubmit 事件，MCP 是唯一通道 |
+| **命令** | Claude Code / Codex / opencode | `/vision` → 优先 `vision-relay describe`，备选 MCP | 用户显式发起（推荐） |
+| MCP | 全端含 **Cursor** | `vision_describe`（path / url / image_data + question） | agent 按需调用 |
+| hook | Claude Code（Codex 亦可接线） | UserPromptSubmit → `vision-relay hook` | prompt 含路径/URL 或 `[Image #N]` |
 
 ### 粘贴图片的处理（v0.3.0）
 
@@ -99,8 +97,8 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | 位置 | 约束 |
 |------|------|
 | MCP 工具描述 | "必须先调用本工具，严禁凭文件名或上下文猜测图片内容" |
-| /vision 命令模板 | 明确执行顺序：先调工具（带 question）-> 再回答 -> 不够就换更具体的 question 重试 |
-| hook 注入文案 | 成功时标注"已识别，无需再调用 vision_describe"（防双重识别）；失败时提示"可用 vision_describe 重试"（fail-open 到工具通道） |
+| /vision 命令模板 | **先** `vision-relay describe`（或 MCP）→ **再**回答；禁止猜图 |
+| hook 注入文案 | 成功时标注"已识别，无需再调用 vision_describe"；失败时提示可用工具重试 |
 
 默认识别 prompt 为结构化输出（图片类型 / 核心内容 / 详细描述 / 编码助手需关注），报错截图要求逐字全文转录含错误码与行号。
 
@@ -120,7 +118,7 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 | 命令 | 说明 |
 |------|------|
-| `/vision <图片路径> <问题>` | 识别图片，针对问题返回描述 |
+| `/vision <图片路径> <问题>` | **两段式**：先 `describe` 识别，再据描述回答 |
 | `/vision-config` | 引导配置视觉模型（支持 npx 兜底） |
 | `/vision-doctor` | 诊断配置与接线状态 |
 
@@ -146,35 +144,38 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 ## 7. 测试
 
-### 单元测试（47 例，Vitest）
+### 单元测试（66 例，Vitest）
 
 | 模块 | 覆盖 |
 |------|------|
-| images | 图片引用提取（路径/URL/去重/中文尾部标点/裸文件名存在性过滤）、mediaType 映射、pngDimensions 免解码探测 |
-| config | 默认值合并、校验、读写往返、0600、新字段校验 |
-| vision | URL 规整（openai/anthropic 各分支）、请求体构造（data URI / base64 / question 覆盖）、响应提取、HTTP 错误/空描述 |
-| hook | 正常路径、无图、单图失败、禁用、maxImages 截断、非 JSON 输入、**损坏配置不崩**、**多图并行**、**单图失败隔离** |
-| mcp | 工具名校验、tools/list、缺参数 isError、路径不存在 isError |
-| prepare | 小图透传一致性、大图压缩变小、长边等比缩小、svg 不阻断、硬上限拒绝文案 |
+| images | 图片引用提取、mediaType、pngDimensions |
+| config | 默认值合并、校验、读写往返、0600；旧 `proxy` 字段加载时丢弃 |
+| vision | URL 规整、请求体、响应提取、HTTP 错误 |
+| hook | 正常/无图/失败隔离/并行/损坏配置不崩 |
+| mcp | 工具名校验、tools/list、缺参 isError |
+| prepare | 压缩/长边/硬上限 |
+| describe-cli | stdout 输出、question 透传、缺图 exit 1 |
+| setup | Cursor MCP；**命令模板覆盖更新**含 describe 两段式 |
 
 ### 集成冒烟
 
-- 本地假视觉服务（node:http）：并行计时验证（2 张 800ms 图总耗时 0.92s < 串行 1.6s）
+- 本地假视觉服务并行计时
 - 损坏配置静默 exit 0
-- 错误工具名返回 JSON-RPC error
+- 错误工具名 JSON-RPC error
 
-### 真模型回归（mimo-v2.5 / token-plan）
+### 真模型回归（mimo-v2.5 / token-plan，2026-08-21）
 
-- test openai ✓ / anthropic ✓
-- hook 真实截图（Figma 页面 452KB）→ 结构化描述 1400+ 字符 ✓
-- MCP openai（图标设计风格）✓ / anthropic（图标配色）✓
-- 真端到端：claude -p 无头会话编码模型 glm-5.2 自主调用 vision_describe 工具 ✓
+- `vision-relay test` openai ✓
+- `vision-relay describe <图>` 结构化描述 ✓
+- `vision-relay describe <图> -q` 按问题简答 ✓
+- MCP `vision_describe` + question ✓
+- hook / 粘贴 image-cache / 大图压缩 ✓（既有记录）
 
 ### 安全检查
 
-- `.env.local`（测试凭证）未入 npm 包 ✓
-- 配置文件 0600 权限 ✓
-- API Key 全链路不出现在日志/输出 ✓
+- `.env.local` 未入 npm 包 ✓
+- 配置文件 0600 ✓
+- API Key 不出现在日志 ✓
 
 ## 8. 里程碑
 

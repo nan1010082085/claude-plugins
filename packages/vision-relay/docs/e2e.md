@@ -49,6 +49,14 @@
 - [x] `/vision` 无参数 → 提醒提供图片路径
 - [x] `/vision-config` → 引导运行 vision-relay init
 - [x] `/vision-doctor` → 引导运行 vision-relay doctor
+- [x] **v0.9.0** `/vision` 模板两段式：优先 `vision-relay describe`，再据描述回答（Claude / Codex / opencode 已 setup 覆盖）
+
+## CLI describe（v0.9.0 真模型）
+
+- [x] `vision-relay describe <图>` → 结构化描述（mimo-v2.5）
+- [x] `vision-relay describe <图> -q "..."` → 按问题简答
+- [x] 缺参 / 路径不存在 → exit 1
+- [x] `vision-relay test` openai 连通 ✓
 
 ## 安全
 
@@ -77,3 +85,5 @@
 | 0.2.1 | Codex 接线：setupCodex() 添加 UserPromptSubmit hook + MCP server + /vision 命令 |
 | 0.3.0 | 粘贴图片直读：`[Image #N]` 映射 image-cache/<session_id>/N.png，用户粘贴即用 |
 | 0.4.0 | Cursor 接线：setupCursor() 写 ~/.cursor/mcp.json（MCP 通道，无 hook） |
+| 0.5.0 | test/doctor 诊断输出增强 |
+| 0.9.0 | **命令优先**：`describe` CLI + `/vision` 两段式；删除出口劫持代理；setup 覆盖更新命令模板；npm 发布 |

@@ -1,12 +1,12 @@
 # Claude Plugins
 
-通用 AI CLI 插件集，为 Claude Code、Codex、opencode 等编码环境提供可复用的工具。
+通用 AI CLI 插件集，为 Claude Code、Codex、opencode、Cursor 等编码环境提供可复用的工具。
 
 ## 插件
 
 | 插件 | 功能 | 版本 |
 |------|------|------|
-| [vision-relay](packages/vision-relay) | 为无视觉能力的编码模型中转图片理解 | [![npm](https://img.shields.io/npm/v/vision-relay)](https://www.npmjs.com/package/vision-relay) |
+| [vision-relay](packages/vision-relay) | 为无视觉能力的编码模型中转图片理解（命令优先 `describe` + MCP + hook） | [![npm](https://img.shields.io/npm/v/vision-relay)](https://www.npmjs.com/package/vision-relay) |
 
 ## 安装
 
@@ -21,7 +21,21 @@
 
 ```bash
 npm install -g vision-relay
+vision-relay init
+vision-relay setup
 ```
+
+## 快速使用（vision-relay）
+
+```bash
+# 终端直接识别
+vision-relay describe ./shot.png -q "这个报错怎么修"
+
+# Claude Code / Codex / opencode 会话内（两段式：先视觉再编码）
+/vision ./shot.png 这个报错怎么修
+```
+
+设计与 E2E：[`packages/vision-relay/docs/design.md`](packages/vision-relay/docs/design.md) · [`e2e.md`](packages/vision-relay/docs/e2e.md)
 
 ## 开发
 
