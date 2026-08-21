@@ -1,20 +1,21 @@
 # commit-flow E2E
 
-## 插件安装
+## 安装
 
-- [ ] `/plugin marketplace add nan1010082085/claude-plugins`（若未添加）
-- [ ] `/plugin install commit-flow@claude-plugins`
-- [ ] 重启或 reload 后可见 `/commit`、`/commit-push`、`/push`
+- [ ] `/plugin install commit-flow@claude-plugins` 后可见全部 slash
+- [ ] `npm i -g claude-commit-flow` → `commit-flow --version` ≥ 0.2.0
 
 ## CLI
 
-- [ ] `pnpm --filter commit-flow build && node packages/commit-flow/dist/index.js --version`
-- [ ] 在有 staged 变更的仓库：`commit-flow classify --json` 含 `classification` / `template`
-- [ ] 暂存 `.env` 时 classify 拒绝并退出非 0
+- [ ] `classify --json` 含 `suggestedBranch`
+- [ ] `suggest-branch` 输出合理 `type/slug`
+- [ ] 暂存 `.env` 时拒绝
 
-## 对话流
+## 对话（对齐 Cursor）
 
-- [ ] `/commit`：生成含 Why + Impact 的 message 并成功 commit
-- [ ] `/commit-push`：commit 后询问确认，否定则不 push；肯定则 push
-- [ ] `/push`：无新 commit，确认后 push；已同步时提示无需 push
-- [ ] 未确认时 agent 不得自行 `git push`
+- [ ] `/create-branch` 创建分支
+- [ ] `/branch-commit` 建分支并 commit（含 Impact）
+- [ ] `/branch-commit-push` 确认前不 push；确认后 `-u`
+- [ ] `/commit` / `/commit-push` / `/push` 行为同 v0.1
+- [ ] `/commit-pr`：无 `gh` 时友好失败；有则确认后给出 PR URL
+- [ ] 未确认时不得自行 push / `gh pr create`

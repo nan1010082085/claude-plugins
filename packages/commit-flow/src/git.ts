@@ -114,3 +114,34 @@ export function push(opts?: GitOpts, setUpstream = false): string {
 export function addAll(opts?: GitOpts): void {
   git(["add", "-A"], opts);
 }
+
+/**
+ * 本地是否已有该分支。
+ * @param name - 分支名
+ * @param opts - git 选项
+ */
+export function branchExists(name: string, opts?: GitOpts): boolean {
+  try {
+    git(["show-ref", "--verify", "--quiet", `refs/heads/${name}`], opts);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 基于当前 HEAD 创建并切换到新分支（`git checkout -b`）。
+ * @param name - 新分支名
+ * @param opts - git 选项
+ */
+export function createBranch(name: string, opts?: GitOpts): string {
+  return git(["checkout", "-b", name], opts);
+}
+
+/**
+ * 最近一次 commit 的 subject。
+ * @param opts - git 选项
+ */
+export function lastCommitSubject(opts?: GitOpts): string {
+  return git(["log", "-1", "--pretty=%s"], opts);
+}

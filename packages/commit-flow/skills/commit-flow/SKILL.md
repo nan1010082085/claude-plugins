@@ -1,39 +1,31 @@
 ---
 name: commit-flow
-description: Intelligent git Commit / Commit & Push / Push with detailed Conventional Commits (classifier template + why/impact). Use when the user says commit、提交、commit and push、push、wrap up、ship it, or wants a commit message with detailed body.
+description: Cursor-like git shortcuts — Commit, Commit & Push, Push, Create Branch, Branch & Commit, Branch Commit & Push, Commit & Create PR. Use for commit、提交、push、开分支、PR、wrap up、ship it; always write detailed Conventional Commits with why/impact.
 ---
 
 # commit-flow
 
-在 Claude Code 对话中完成快捷 Git 工作流（对齐客户端 Commit / Commit & Push / Push）。
+对齐 Cursor「Commit & Push」下拉的 Claude Code 工作流。
 
-## 何时使用
+## 命令表
 
-- 用户说 commit / 提交 / smart commit / wrap up
-- 用户说 commit and push / 提交并推送
-- 用户说 push / 推送（仅推已有 commits）
-
-## 命令对应
-
-| 意图 | 行为 |
-|------|------|
-| Commit | 分类器模板 + 你补 Why/Impact → **直接** `git commit` |
-| Commit & Push | 先 Commit → **确认后** `git push` |
-| Push | 展示 `@{u}..HEAD` → **确认后** `git push` |
+| Cursor | Slash | 确认 |
+|--------|-------|------|
+| Create Branch | `/create-branch` | 展示分支名后直接创建 |
+| Create Branch & Commit | `/branch-commit` | Commit 直接 |
+| Create Branch, Commit & Push | `/branch-commit-push` | **Push 需确认** |
+| Commit | `/commit` | 直接 |
+| Commit & Push | `/commit-push` | **Push 需确认** |
+| Commit & Create PR | `/commit-pr` | **Push/PR 需确认**（`gh`） |
+| （额外）Push | `/push` | **需确认** |
 
 ## 消息质量（强制）
 
-禁止只交一行 title。正文必须包含：
-
-1. **Why** — 为什么改
-2. **要点** — 关键文件/行为
-3. **Impact** — 影响与风险
-4. **Summary** — 文件数与 +/- 行（可来自 classify JSON）
-
-优先跑：`commit-flow classify --json`（或 `npx claude-commit-flow classify --json`）。
+禁止只交一行 title。必须含 Why、要点、Impact、Summary。  
+优先：`commit-flow classify --json` / `commit-flow suggest-branch`。
 
 ## 安全
 
 - 疑似密钥文件 → 停止
-- Push 必须用户明确确认
+- Push / 开 PR 必须用户明确确认
 - 默认不用 `--no-verify` / `--force`

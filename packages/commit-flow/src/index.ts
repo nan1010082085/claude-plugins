@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * commit-flow CLI：分类与状态 JSON，供 slash command / agent 调用。
- * 不在此自动 push；push 由对话确认后 agent 执行。
+ * commit-flow CLI：分类、分支建议与状态 JSON，供 slash / agent 调用。
+ * 不在此自动 push / 开 PR；需对话确认后由 agent 执行。
  */
 
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { suggestBranchName } from "./branch.js";
 import { classify } from "./classify.js";
 import {
   addAll,
@@ -50,10 +51,9 @@ function gather(autoStage: boolean) {
   const files = stagedFiles();
   const secrets = findSecretFiles(files);
   if (secrets.length > 0) {
-    const err = new Error(
+    throw new Error(
       `Refusing to proceed: secret-like files staged:\n${secrets.map((f) => `  - ${f}`).join("\n")}`,
     );
-    throw err;
   }
   const diff = stagedDiff();
   const branch = currentBranch();
@@ -61,14 +61,25 @@ function gather(autoStage: boolean) {
   const classification = classify({ files, diff, branch });
   const title = draftTitle(classification, files);
   const template = buildCommitMessage({ classification, title, stats });
-  return { files, branch, stats, classification, title, template };
+  const suggestedBranch = suggestBranchName(classification, title);
+  return {
+    files,
+    branch,
+    stats,
+    classification,
+    title,
+    template,
+    suggestedBranch,
+  };
 }
 
 const program = new Command();
 
 program
   .name("commit-flow")
-  .description("Claude Code 快捷 Commit / Commit & Push / Push 辅助 CLI")
+  .description(
+    "Claude Code 快捷 Git：Commit / Push / Branch / PR 辅助 CLI（对齐 Cursor 下拉）",
+  )
   .version(packageVersion());
 
 program
@@ -87,6 +98,50 @@ program
         process.exit(1);
       }
       console.log(JSON.stringify(result, null, 2));
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("suggest-branch")
+  .description("根据暂存变更建议分支名（JSON）")
+  .option("-a, --auto-stage", "先 git add -A", false)
+  .option("-t, --title <title>", "覆盖标题草案用于 slug")
+  .action((opts: { autoStage?: boolean; title?: string }) => {
+    try {
+      if (!opts.autoStage && stagedFiles().length === 0) {
+        // 无暂存时仍可用当前分支 + 空分类给一个通用建议
+        const branch = currentBranch();
+        console.log(
+          JSON.stringify(
+            {
+              currentBranch: branch,
+              suggestedBranch: null,
+              hint: "No staged changes. Stage files or pass --auto-stage / --title.",
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      const result = gather(Boolean(opts.autoStage));
+      const title = opts.title?.trim() || result.title;
+      const suggestedBranch = suggestBranchName(result.classification, title);
+      console.log(
+        JSON.stringify(
+          {
+            currentBranch: result.branch,
+            suggestedBranch,
+            classification: result.classification,
+            title,
+          },
+          null,
+          2,
+        ),
+      );
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);

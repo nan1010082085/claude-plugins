@@ -11,8 +11,8 @@
     {
       "name": "commit-flow",
       "source": "./packages/commit-flow",
-      "description": "快捷 Commit / Commit & Push / Push：分类器模板 + 详细 why/impact，Push 需确认",
-      "version": "0.1.0"
+      "description": "对齐 Cursor：Branch / Commit / Push / PR，详细 why/impact，Push/PR 需确认",
+      "version": "0.2.0"
     }
   ]
 }

@@ -7,7 +7,7 @@
 | 插件 | 功能 | 版本 |
 |------|------|------|
 | [vision-relay](packages/vision-relay) | 为无视觉能力的编码模型中转图片理解（命令优先 `describe` + MCP + hook） | [![npm](https://img.shields.io/npm/v/vision-relay)](https://www.npmjs.com/package/vision-relay) |
-| [commit-flow](packages/commit-flow) | 快捷 Commit / Commit & Push / Push（详细 Conventional Commits） | [![npm](https://img.shields.io/npm/v/claude-commit-flow)](https://www.npmjs.com/package/claude-commit-flow) |
+| [commit-flow](packages/commit-flow) | 对齐 Cursor：Branch / Commit / Push / PR（详细 Conventional Commits） | [![npm](https://img.shields.io/npm/v/claude-commit-flow)](https://www.npmjs.com/package/claude-commit-flow) |
 
 ## 安装
 
@@ -43,10 +43,16 @@ vision-relay describe ./shot.png -q "这个报错怎么修"
 ## 快速使用（commit-flow）
 
 ```
+/create-branch
+/branch-commit
+/branch-commit-push
 /commit
 /commit-push
+/commit-pr
 /push
 ```
+
+设计与 E2E：[`packages/commit-flow/docs/design.md`](packages/commit-flow/docs/design.md) · [`e2e.md`](packages/commit-flow/docs/e2e.md)
 
 ## 开发
 
