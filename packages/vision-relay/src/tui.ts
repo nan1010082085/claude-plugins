@@ -1,19 +1,45 @@
 import * as p from '@clack/prompts'
+import pc from 'picocolors'
 import { defaultConfig, saveConfig, validateConfig, type Config } from './config.js'
 import { tinyPng } from './images.js'
-import { describeImage } from './vision.js'
+import { anthropicUrl, describeImage, openaiUrl } from './vision.js'
 import { setupInteractive } from './setup.js'
 
 export async function testConnection(config: Config): Promise<void> {
+  const v = config.vision
+  const endpoint = v.type === 'openai' ? openaiUrl(v.baseUrl) : anthropicUrl(v.baseUrl)
+  const keyTail = v.apiKey ? `${v.apiKey.slice(0, 3)}***${v.apiKey.slice(-4)}` : '未配置'
+  const prompt = '这张测试图是什么颜色？一句话回答。'
+
+  console.log(pc.bold('\n测试目标'))
+  console.log(`  协议      ${v.type}`)
+  console.log(`  端点      ${endpoint}`)
+  console.log(`  模型      ${v.model}`)
+  console.log(`  超时      ${v.timeoutMs ? `${(v.timeoutMs / 1000).toFixed(0)}s` : '无'}`)
+  console.log(`  API Key   ${keyTail}`)
+
+  console.log(pc.bold('\n发送内容'))
+  console.log(`  图片      1x1 红色 PNG（67 字节，base64 内嵌）`)
+  console.log(`  提问      ${prompt}`)
+
+  console.log(pc.bold('\n预期'))
+  console.log(`  HTTP 200 且响应非空；模型正常应提到"红"色`)
+
   const s = p.spinner()
-  s.start('连接视觉模型…')
+  s.start('请求视觉模型…')
+  const start = Date.now()
   try {
-    const desc = await describeImage(config.vision, tinyPng(), '这张测试图是什么颜色？一句话回答。')
-    s.stop('连接成功')
-    p.log.success(`模型返回: ${desc.slice(0, 120)}`)
+    const desc = await describeImage(v, tinyPng(), prompt)
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2)
+    s.stop(`连接成功（耗时 ${elapsed}s）`)
+    p.log.success(`模型返回: ${desc.slice(0, 200)}`)
+    const colorHit = /红|red/i.test(desc)
+    p.log.success(`颜色判定: ${colorHit ? '响应包含"红"，符合预期' : '响应未提到"红"（模型描述风格差异，不影响链路判定）'}`)
   } catch (e) {
-    s.stop('连接失败')
-    p.log.error((e as Error).message)
+    const elapsed = ((Date.now() - start) / 1000).toFixed(2)
+    s.stop(`连接失败（耗时 ${elapsed}s）`)
+    p.log.error(`错误: ${(e as Error).message}`)
+    p.log.info(`排查建议: 401/403 检查 API Key；404 检查 baseUrl 与模型名；超时增大 vision.timeoutMs；运行 vision-relay doctor 查看完整状态`)
     throw e
   }
 }
