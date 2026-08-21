@@ -168,12 +168,13 @@ export function detectTerminals(): TerminalId[] {
     process.platform === 'win32'
       ? spawnSync('where', [bin], { shell: true, stdio: 'ignore' }).status === 0
       : spawnSync('which', [bin], { stdio: 'ignore' }).status === 0
+  // CLI 不在 PATH 时落到配置目录检测（Codex 桌面版 / Cursor 无 CLI 命令）
+  const hasDir = (dir: string): boolean => existsSync(join(homedir(), dir))
   const found: TerminalId[] = []
-  if (has('claude')) found.push('claude-code')
-  if (has('codex')) found.push('codex')
-  if (has('opencode')) found.push('opencode')
-  // cursor CLI 常不在 PATH，落到配置目录检测
-  if (has('cursor') || existsSync(join(homedir(), '.cursor'))) found.push('cursor')
+  if (has('claude') || hasDir('.claude')) found.push('claude-code')
+  if (has('codex') || hasDir('.codex')) found.push('codex')
+  if (has('opencode') || hasDir(join('.config', 'opencode'))) found.push('opencode')
+  if (has('cursor') || hasDir('.cursor')) found.push('cursor')
   return found
 }
 
