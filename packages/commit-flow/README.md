@@ -14,7 +14,7 @@ Claude Code 快捷 **Commit / Commit & Push / Push**：分类器填模板，模�
 ### npm CLI
 
 ```bash
-npm install -g commit-flow
+npm install -g claude-commit-flow
 commit-flow classify --json
 ```
 

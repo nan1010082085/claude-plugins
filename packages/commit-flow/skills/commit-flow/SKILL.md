@@ -30,7 +30,7 @@ description: Intelligent git Commit / Commit & Push / Push with detailed Convent
 3. **Impact** — 影响与风险
 4. **Summary** — 文件数与 +/- 行（可来自 classify JSON）
 
-优先跑：`commit-flow classify --json`（或 `npx commit-flow classify --json`）。
+优先跑：`commit-flow classify --json`（或 `npx claude-commit-flow classify --json`）。
 
 ## 安全
 

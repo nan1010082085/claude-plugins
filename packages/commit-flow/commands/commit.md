@@ -18,7 +18,7 @@ argument-hint: "[可选说明]"
    - `git diff --stat`（未暂存仅作提示，默认不提交除非用户要求）
    - `git log --oneline -10`
    - `git branch --show-current`
-   - 若已安装 CLI：`commit-flow classify --json`（可加 `--auto-stage` 若用户要提交全部改动）
+   - 若已安装 CLI：`commit-flow classify --json`（或 `npx claude-commit-flow classify --json`；可加 `--auto-stage` 若用户要提交全部改动）
 
 2. **敏感文件**：若含 `.env`、`credentials*`、`*.pem`、密钥类路径 → **停止**，列出文件并请用户处理。勿 commit。
 

@@ -81,7 +81,7 @@ packages/commit-flow/
 /plugin install commit-flow@claude-plugins
 ```
 
-或：`npm i -g commit-flow` 后用 CLI。
+或：`npm i -g claude-commit-flow` 后用 CLI（命令名仍为 `commit-flow`）。
 
 ## 7. 测试
 

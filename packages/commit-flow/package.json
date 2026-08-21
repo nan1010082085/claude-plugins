@@ -1,5 +1,5 @@
 {
-  "name": "commit-flow",
+  "name": "claude-commit-flow",
   "version": "0.1.0",
   "description": "Claude Code 快捷 Commit / Commit & Push / Push：分类器模板 + 详细 why/impact",
   "type": "module",
