@@ -9,12 +9,17 @@ const { version } = require('../package.json') as { version: string }
 const TOOL = {
   name: 'vision_describe',
   description:
-    '识别图片并返回详细文字描述。当用户消息中出现图片路径或 URL 且你无法直接查看时，必须先调用本工具，严禁猜测图片内容。参数：path（本地路径）或 url（网络地址）二选一；question（可选）针对图片的具体问题。',
+    '识别图片并返回详细文字描述。当用户消息中出现图片且你无法直接查看时，必须先调用本工具，严禁猜测图片内容。' +
+    '三种传图方式（任选其一）：' +
+    '1. path — 本地图片路径；2. url — 图片 URL；3. image_data — 图片的 base64 编码（当用户粘贴图片时，你可以从对话上下文的 content block 中获取 base64 数据传入此参数）。' +
+    'question（可选）：针对图片的具体问题。',
   inputSchema: {
-    type: 'object',
+    type: 'object' as const,
     properties: {
       path: { type: 'string', description: '本地图片路径（png/jpg/gif/webp/bmp/svg）' },
       url: { type: 'string', description: '图片 URL' },
+      image_data: { type: 'string', description: '图片的 base64 编码数据（从对话上下文中的 Image content block 获取）' },
+      media_type: { type: 'string', description: '图片 MIME 类型（配合 image_data 使用，如 image/png、image/jpeg）。不传则自动推断为 image/png' },
       question: { type: 'string', description: '针对图片的问题，作为识别提示词' },
     },
   },
@@ -35,10 +40,12 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
   const args = (params?.arguments ?? {}) as Record<string, unknown>
   const path = typeof args.path === 'string' ? args.path : undefined
   const url = typeof args.url === 'string' ? args.url : undefined
+  const imageData = typeof args.image_data === 'string' ? args.image_data : undefined
+  const mediaType = typeof args.media_type === 'string' ? args.media_type : undefined
   const question = typeof args.question === 'string' ? args.question : undefined
-  if (!path && !url) {
+  if (!path && !url && !imageData) {
     return {
-      content: [{ type: 'text', text: '[vision-relay] 错误: 必须提供 path 或 url 参数' }],
+      content: [{ type: 'text', text: '[vision-relay] 错误: 必须提供 path、url 或 image_data 参数' }],
       isError: true,
     }
   }
@@ -48,11 +55,25 @@ async function callTool(params: Record<string, unknown> | undefined): Promise<un
     if (errs.length) {
       return { content: [{ type: 'text', text: `[vision-relay] 配置不完整: ${errs.join('; ')}` }], isError: true }
     }
-    const image = await readImageRef(
-      { kind: url ? 'url' : 'path', value: url || path! },
-      process.cwd(),
-      config.vision.maxImageBytes,
-    )
+    let image: import('./images.js').ImageInput
+    if (imageData) {
+      // base64 直传模式：从对话上下文的 Image content block 获取
+      const buf = Buffer.from(imageData, 'base64')
+      // 简单推断 MIME 类型
+      const inferredType = mediaType
+        || (buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png'
+          : buf[0] === 0xff && buf[1] === 0xd8 ? 'image/jpeg'
+            : buf[0] === 0x47 && buf[1] === 0x49 ? 'image/gif'
+              : buf[0] === 0x52 && buf[1] === 0x49 ? 'image/webp'
+                : 'image/png')
+      image = { data: buf, mediaType: inferredType, source: 'base64' }
+    } else {
+      image = await readImageRef(
+        { kind: url ? 'url' : 'path', value: url || path! },
+        process.cwd(),
+        config.vision.maxImageBytes,
+      )
+    }
     const prepared = await prepareImage(image, {
       targetBytes: config.vision.targetImageBytes,
       maxEdge: config.vision.maxImageEdge,

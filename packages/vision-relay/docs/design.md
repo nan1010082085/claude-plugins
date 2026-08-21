@@ -1,8 +1,8 @@
 # vision-relay 设计与测试方案
 
-> 状态：**v0.1.5 开发完成，已发布 npm，已在真实 Claude Code 环境验证通过。**
+> 状态：**v0.3.0 开发完成，粘贴图片直读 image-cache，无需用户另存文件。**
 >
-> 2026-08-20 从零开发到发布，经历 6 个版本迭代（0.1.0 → 0.1.5）。
+> 2026-08-20 从零开发到发布，经历 7 个版本迭代（0.1.0 → 0.2.0）。
 
 ## 1. 问题
 
@@ -35,9 +35,16 @@ vision-relay（一次性进程，零守护）
 | MCP 工具 | 三家都支持 | `vision-relay mcp`（stdio JSON-RPC）→ `vision_describe` | agent 调用，支持 path/url + question |
 | 命令 | Claude Code / Codex / opencode | `/vision <图片> <提示词>` 自定义命令模板 | 用户显式发起，提示词自定义 |
 
-### 边界：粘贴的图片块
+### 粘贴图片的处理（v0.3.0）
 
-Claude Code 粘贴图片以内容块进入消息，hook 只能拿到 prompt 文本、MCP 要求模型先"看见"图片——两者都无法拦截图片块。中转模式覆盖**路径 / URL 引用**（用户把图存成文件或贴链接）。图片块拦截需要代理模式（§9）。
+Claude Code 粘贴图片以 Image content block（base64）进入 API messages，prompt 文本中是 `[Image #N]` 占位符。
+
+**关键发现（实测 Claude Code 2.1.238）**：粘贴时 Claude Code 已把图片落盘到 `~/.claude/image-cache/<session_id>/N.png`，且 UserPromptSubmit hook stdin 含 `session_id`。两者对上后 hook 可直接读盘识别，用户粘贴即用。
+
+处理优先级：
+1. **stdin 含 inline base64（预留）**：`extractInlineImages()` 提取识别
+2. **`[Image #N]` -> image-cache 直读（主路径）**：`resolvePastedImage()` 按 `session_id + N` 定位缓存文件；stdin 缺 `session_id` 时兜底取最近更新的 image-cache 目录
+3. **缓存缺失**：注入降级提示（让用户改用文件路径 / URL），不再要求"另存为文件"
 
 ## 3. 视觉模型调用
 

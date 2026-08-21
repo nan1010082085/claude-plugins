@@ -97,10 +97,28 @@ export function setupCodex(): string[] {
   const existing = existsSync(configPath) ? readFileSync(configPath, 'utf8') : ''
   if (!existing.includes('[mcp_servers.vision-relay]')) {
     mkdirSync(dirname(configPath), { recursive: true })
-    const section = `\n[mcp_servers.vision-relay]\ncommand = "${mcp.command}"\nargs = [${mcp.args.map((a) => `"${a}"`).join(', ')}]\n`
+    const section = `\n[mcp_servers.vision-relay]\ntype = "stdio"\ncommand = "${mcp.command}"\nargs = [${mcp.args.map((a) => `"${a}"`).join(', ')}]\n`
     writeFileSync(configPath, existing + (existing.endsWith('\n') || !existing ? '' : '\n') + section)
     log.push(`MCP server -> ${configPath}`)
   }
+
+  // UserPromptSubmit hook → ~/.codex/hooks.json
+  const hooksPath = join(homedir(), '.codex', 'hooks.json')
+  const hookCmd = resolveCommand('hook')
+  const hooksJson = readJson(hooksPath)
+  const hooks = (hooksJson.hooks ?? {}) as Record<string, unknown>
+  const entries = Array.isArray(hooks['UserPromptSubmit']) ? hooks['UserPromptSubmit'] : []
+  const already = JSON.stringify(entries).includes('vision-relay')
+  if (!already) {
+    hooks['UserPromptSubmit'] = [
+      ...entries,
+      { matcher: '', hooks: [{ type: 'command', command: `${hookCmd.command} ${hookCmd.args.join(' ')}`, timeout: 60 }] },
+    ]
+    hooksJson.hooks = hooks
+    writeJson(hooksPath, hooksJson)
+    log.push(`UserPromptSubmit hook -> ${hooksPath}`)
+  }
+
   if (writeIfAbsent(join(homedir(), '.codex', 'prompts', 'vision.md'), VISION_COMMAND_MD)) {
     log.push('/vision 命令 -> ~/.codex/prompts/vision.md')
   }

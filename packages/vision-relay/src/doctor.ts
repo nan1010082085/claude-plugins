@@ -18,8 +18,10 @@ function isWired(t: TerminalId): boolean {
   }
   if (t === 'codex') {
     const toml = join(homedir(), '.codex', 'config.toml')
-    if (!existsSync(toml)) return false
-    return readFileSync(toml, 'utf8').includes('[mcp_servers.vision-relay]')
+    const hooks = join(homedir(), '.codex', 'hooks.json')
+    const hasMcp = existsSync(toml) && readFileSync(toml, 'utf8').includes('[mcp_servers.vision-relay]')
+    const hasHook = existsSync(hooks) && readFileSync(hooks, 'utf8').includes('vision-relay')
+    return hasMcp && hasHook
   }
   const json = join(homedir(), '.config', 'opencode', 'opencode.json')
   if (!existsSync(json)) return false

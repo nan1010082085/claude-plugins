@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,11 +10,15 @@ vi.mock('../src/vision.js', () => ({ describeImage: describeImageMock }))
 
 let cfgDir: string
 let cwd: string
+let claudeDir: string
 
 beforeEach(() => {
   cfgDir = mkdtempSync(join(tmpdir(), 'vb-hook-'))
   cwd = mkdtempSync(join(tmpdir(), 'vb-hook-cwd-'))
+  // 隔离 image-cache，避免读到真实 ~/.claude 的粘贴缓存
+  claudeDir = mkdtempSync(join(tmpdir(), 'vb-hook-claude-'))
   process.env.VISION_RELAY_CONFIG_DIR = cfgDir
+  process.env.CLAUDE_CONFIG_DIR = claudeDir
   const cfg = defaultConfig()
   cfg.vision.apiKey = 'sk-test'
   saveConfig(cfg)
@@ -27,8 +31,16 @@ function withKey(mod: Partial<ReturnType<typeof defaultConfig>>): ReturnType<typ
   return Object.assign(cfg, mod)
 }
 
+function writePastedImage(sessionId: string, n: number): void {
+  const dir = join(claudeDir, 'image-cache', sessionId)
+  mkdirSync(dir, { recursive: true })
+  // 1x1 红色 PNG
+  writeFileSync(join(dir, `${n}.png`), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+}
+
 afterEach(() => {
   delete process.env.VISION_RELAY_CONFIG_DIR
+  delete process.env.CLAUDE_CONFIG_DIR
 })
 
 describe('runClaudeCodeHook', () => {
@@ -74,5 +86,95 @@ describe('runClaudeCodeHook', () => {
     writeFileSync(join(cwd, 'c.png'), 'x')
     const { additionalContext } = await runClaudeCodeHook('看看 c.png', cwd)
     expect(additionalContext).toContain('c.png')
+  })
+
+  it('stdin 含 inline base64 图片时直接识别', async () => {
+    // 1x1 红色 PNG 的 base64
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const input = JSON.stringify({
+      prompt: '[Image #1] 这是什么',
+      images: [{ type: 'image', file: { base64: tinyPng, type: 'image/png', originalSize: 67 } }],
+    })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('[vision-relay 图片 #1:')
+    expect(additionalContext).toContain('TypeError')
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('stdin 含 data URI 图片时识别', async () => {
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const input = JSON.stringify({
+      prompt: '[Image #1] 解释一下',
+      content: [{ type: 'image_url', image_url: { url: `data:image/png;base64,${tinyPng}` } }],
+    })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('[vision-relay 图片 #1:')
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('stdin 有 inline 图片时优先于路径扫描', async () => {
+    writeFileSync(join(cwd, 'also.png'), 'x')
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const input = JSON.stringify({
+      prompt: '看 also.png 和 [Image #1]',
+      images: [{ type: 'image', file: { base64: tinyPng, type: 'image/png', originalSize: 67 } }],
+    })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    // 应该走 inline 路径，只识别 inline 图片
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+    expect(additionalContext).toContain('stdin:image')
+  })
+
+  it('[Image #N] 从 image-cache 读取粘贴图片并识别（用户粘贴即用，无需另存文件）', async () => {
+    writePastedImage('sess-1', 1)
+    const input = JSON.stringify({ session_id: 'sess-1', prompt: '[Image #1] 这个报错怎么修' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('[vision-relay 图片 #1: 粘贴图片 [Image #1]]')
+    expect(additionalContext).toContain('TypeError')
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('多个 [Image #N] 并行识别', async () => {
+    writePastedImage('sess-2', 1)
+    writePastedImage('sess-2', 2)
+    const input = JSON.stringify({ session_id: 'sess-2', prompt: '[Image #1] 和 [Image #2] 对比一下' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(describeImageMock).toHaveBeenCalledTimes(2)
+    expect(additionalContext).toContain('粘贴图片 [Image #1]')
+    expect(additionalContext).toContain('粘贴图片 [Image #2]')
+  })
+
+  it('粘贴图片与路径引用混合时一起识别', async () => {
+    writePastedImage('sess-3', 1)
+    writeFileSync(join(cwd, 'shot.png'), 'x')
+    const input = JSON.stringify({ session_id: 'sess-3', prompt: '[Image #1] 和 shot.png 对比' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(describeImageMock).toHaveBeenCalledTimes(2)
+    expect(additionalContext).toContain('粘贴图片 [Image #1]')
+    expect(additionalContext).toContain('shot.png')
+  })
+
+  it('stdin 缺 session_id 时兜底取最近的 image-cache 目录', async () => {
+    writePastedImage('sess-latest', 1)
+    const input = JSON.stringify({ prompt: '[Image #1] 这是什么' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+    expect(additionalContext).toContain('TypeError')
+  })
+
+  it('粘贴图片缓存缺失时注入降级提示', async () => {
+    const input = JSON.stringify({ session_id: 'sess-gone', prompt: '[Image #1] 这个报错怎么修' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('[vision-relay]')
+    expect(additionalContext).toContain('[Image #1]')
+    expect(additionalContext).toContain('文件路径或 URL')
+    expect(describeImageMock).not.toHaveBeenCalled()
+  })
+
+  it('[Pasted text #N] 也触发提示', async () => {
+    const input = JSON.stringify({ prompt: '[Pasted text #1] 帮我看看' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('vision-relay')
+    expect(describeImageMock).not.toHaveBeenCalled()
   })
 })

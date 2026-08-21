@@ -17,6 +17,15 @@
 - [x] 无图片 prompt → 静默返回，无副作用
 - [x] 损坏配置 → 静默跳过，不阻塞会话
 - [x] 多图并行识别（2 张 800ms 假图总耗时 0.92s）
+- [x] stdin 含 inline base64 图片（images 字段）→ 直接识别
+- [x] stdin 含 data URI 图片（content 字段）→ 直接识别
+- [x] stdin 有 inline 图片时优先于路径扫描
+
+- [x] `[Image #N]` + 真实路径 -> 一起识别
+- [x] `[Pasted text #N]` 也触发提示
+- [x] **粘贴图片直读**：stdin `session_id` + `[Image #1]` -> 读 `~/.claude/image-cache/<session_id>/1.png` 识别注入（2026-08-21 真模型验证，返回完整结构化描述）
+- [x] 粘贴图片与路径引用混合 -> 并行识别
+- [x] 缓存缺失（session 不存在）-> 降级提示，不再要求另存文件
 
 ## MCP 工具链路
 
@@ -26,6 +35,8 @@
 - [x] `tools/call` 缺参数 → isError
 - [x] `tools/call` 未知工具名 → JSON-RPC 错误
 - [x] 7.7MB 大图（5000x3200）→ 自动压缩后识别成功
+- [x] `tools/call` + image_data（base64）→ 识别成功（自动推断 MIME）
+- [x] `tools/call` + image_data + media_type → 识别成功
 
 ## 真端到端（Claude Code 无头会话）
 
@@ -45,6 +56,14 @@
 - [x] 配置文件权限 0600
 - [x] API Key 不出现在日志/输出
 
+## Codex 接线
+
+- [x] MCP server 配置 → `~/.codex/config.toml` `[mcp_servers.vision-relay]`
+- [x] UserPromptSubmit hook → `~/.codex/hooks.json`
+- [x] /vision 命令 → `~/.codex/prompts/vision.md`
+- [x] `setupCodex()` 自动添加 hook 配置
+- [x] `doctor` 检查 Codex hook 接线状态
+
 ## 版本发布
 
 | 版本 | 变更 |
@@ -55,3 +74,5 @@
 | 0.1.3 | 大图自动压缩（替换一刀切限制） |
 | 0.1.4 | 新增 /vision-config 斜杠命令 |
 | 0.1.5 | 新增 /vision-doctor 斜杠命令 + 重写 README |
+| 0.2.1 | Codex 接线：setupCodex() 添加 UserPromptSubmit hook + MCP server + /vision 命令 |
+| 0.3.0 | 粘贴图片直读：`[Image #N]` 映射 image-cache/<session_id>/N.png，用户粘贴即用 |

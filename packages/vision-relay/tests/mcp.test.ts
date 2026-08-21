@@ -61,7 +61,7 @@ describe('MCP tools/call 工具名校验（回归）', () => {
     })
     const resp = JSON.parse(outputs[0]!) as { result: { isError: boolean; content: { text: string }[] } }
     expect(resp.result.isError).toBe(true)
-    expect(resp.result.content[0]!.text).toContain('必须提供 path 或 url')
+    expect(resp.result.content[0]!.text).toContain('必须提供 path、url 或 image_data')
   })
 
   it('识别失败时返回 isError（路径不存在）', async () => {
@@ -74,5 +74,34 @@ describe('MCP tools/call 工具名校验（回归）', () => {
     })
     const resp = JSON.parse(outputs[0]!) as { result: { isError: boolean } }
     expect(resp.result.isError).toBe(true)
+  })
+
+  it('image_data 参数可接受 base64 图片数据', async () => {
+    const { handleMessageForTest } = await import('../src/mcp.js')
+    // 1x1 红色 PNG
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    await handleMessageForTest({
+      jsonrpc: '2.0',
+      id: 5,
+      method: 'tools/call',
+      params: { name: 'vision_describe', arguments: { image_data: tinyPng } },
+    })
+    // baseUrl 不可达，会报连接错误，但不会因为参数校验报错
+    const resp = JSON.parse(outputs[0]!) as { result: { content: { text: string }[] } }
+    expect(resp.result.content[0]!.text).not.toContain('必须提供')
+  })
+
+  it('image_data 自动推断 PNG MIME 类型', async () => {
+    const { handleMessageForTest } = await import('../src/mcp.js')
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    await handleMessageForTest({
+      jsonrpc: '2.0',
+      id: 6,
+      method: 'tools/call',
+      params: { name: 'vision_describe', arguments: { image_data: tinyPng, media_type: 'image/png' } },
+    })
+    const resp = JSON.parse(outputs[0]!) as { result: { content: { text: string }[] } }
+    // 不会因为 MIME 类型报错
+    expect(resp.result.content[0]!.text).not.toContain('MIME')
   })
 })

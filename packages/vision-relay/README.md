@@ -40,6 +40,22 @@ npx vision-relay setup
 
 prompt 中出现图片路径或 URL 时，vision-relay 自动识别并注入描述，编码模型无需任何改动。
 
+### 粘贴图片
+
+**直接粘贴即可，无需任何额外操作。** 用户在 Claude Code 里粘贴图片时，Claude Code 会把图片落盘到 `~/.claude/image-cache/<session_id>/N.png`；hook 从 stdin 拿到 `session_id`，把 `[Image #N]` 映射到对应缓存文件，直接读取识别并注入描述。
+
+仅在缓存缺失（会话已被清理）时才会提示改用文件路径或 URL。
+
+### MCP 工具参数
+
+`vision_describe` 工具支持三种传图方式（任选其一）：
+
+| 参数 | 说明 |
+|------|------|
+| `path` | 本地图片路径 |
+| `url` | 图片 URL |
+| `image_data` | 图片的 base64 编码（配合 `media_type` 使用，预留） |
+
 ### Claude CLI 斜杠命令
 
 | 命令 | 说明 |
@@ -98,7 +114,7 @@ vision-relay 调配置的视觉模型识别图片
 
 ## 边界
 
-粘贴的**图片块**（直接拖拽到终端）无法被 hook 拦截（hook 只拿到 prompt 文本）。图片块场景需要代理模式（预留，未实现）。通过路径 / URL 引用图片即可正常使用。
+粘贴图片依赖 Claude Code 的 image-cache（`~/.claude/image-cache/<session_id>/N.png`），该目录随会话清理；缓存缺失时降级提示用户提供路径 / URL。通过路径 / URL 引用图片不受影响。
 
 ## 许可
 
