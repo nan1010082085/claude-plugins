@@ -1,7 +1,7 @@
 {
   "name": "commit-flow",
   "description": "对齐 Cursor 的快捷 Git：Create Branch、Commit、Commit & Push、Commit & Create PR；详细 why/impact，Push/PR 需确认。",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": { "name": "nan1010082085" },
   "homepage": "https://github.com/nan1010082085/claude-plugins/tree/main/packages/commit-flow",
   "repository": "https://github.com/nan1010082085/claude-plugins",
