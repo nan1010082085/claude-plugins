@@ -87,12 +87,17 @@ export function unpushedLog(opts?: GitOpts): { ok: boolean; log: string; hint?: 
 }
 
 /**
- * 创建 commit（message 经 stdin，避免 shell 转义问题）。
+ * 创建 commit（message 经 stdin -F -，避免 shell 转义问题）。
  * @param message - 完整 commit message
  * @param opts - git 选项
  */
 export function commitWithMessage(message: string, opts?: GitOpts): string {
-  return git(["commit", "-m", message], opts);
+  return execFileSync("git", ["commit", "-F", "-"], {
+    encoding: "utf-8",
+    cwd: opts?.cwd ?? process.cwd(),
+    stdio: ["pipe", "pipe", "pipe"],
+    input: message,
+  }).trim();
 }
 
 /**

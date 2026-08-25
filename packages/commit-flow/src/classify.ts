@@ -127,6 +127,17 @@ function detectBreaking(diff: string): boolean {
  * 按优先级对暂存变更分类。
  * @param input - 文件列表、diff、分支
  */
+
+/**
+ * 从 unified diff 中提取新增行（以 + 开头但非 +++），限制关键词扫描范围。
+ */
+function addedLines(diff: string): string {
+  return diff
+    .split("\n")
+    .filter((l) => l.startsWith("+") && !l.startsWith("+++"))
+    .join("\n");
+}
+
 export function classify(input: ClassifyInput): Classification {
   const { files, diff, branch } = input;
   const reasons: string[] = [];
@@ -137,37 +148,7 @@ export function classify(input: ClassifyInput): Classification {
   const testCount = files.filter(isTestFile).length;
   const docCount = files.filter(isDocFile).length;
 
-  if (/^\+.*(revert|undo|rollback)/im.test(diff.slice(0, 2000)) ||
-    /\brevert\b/i.test(diff.slice(0, 500))) {
-    type = "revert";
-    reasons.push("Changes appear to revert previous commits");
-    confidence = "high";
-  }
-
-  if (!type && /\b(fix|bug|issue|error|crash|resolve|patch|broken|incorrect)\b/i.test(diff)) {
-    type = "fix";
-    reasons.push("Changes address bugs or errors");
-    confidence = "high";
-  }
-
-  if (!type && /\b(add|implement|create|new|feature|support|introduce)\b/i.test(diff)) {
-    type = "feat";
-    reasons.push("Changes add new functionality");
-    confidence = "high";
-  }
-
-  if (!type && /\b(performance|optimize|speed|fast|cache|lazy|memo|efficient)\b/i.test(diff)) {
-    type = "perf";
-    reasons.push("Changes improve performance");
-    confidence = "high";
-  }
-
-  if (!type && /\b(refactor|restructure|reorganize|simplify|extract|rename|move|decouple)\b/i.test(diff)) {
-    type = "refactor";
-    reasons.push("Changes restructure code");
-    confidence = "medium";
-  }
-
+  // 文件类型排他检查优先：全部是测试/文档时直接定性，不受 diff 关键词干扰
   if (!type && total > 0 && testCount === total) {
     type = "test";
     reasons.push("Only test files changed");
@@ -180,7 +161,40 @@ export function classify(input: ClassifyInput): Classification {
     confidence = "high";
   }
 
-  if (!type && files.some(isStyleFile) && !/\b(function|class|const|let|var|import|export)\b/i.test(diff)) {
+  // 关键词仅扫描新增行，避免删除代码中的词误触发分类
+  const added = addedLines(diff);
+
+  if (!type && /(?:revert|undo|rollback)/i.test(added.slice(0, 2000))) {
+    type = "revert";
+    reasons.push("Changes appear to revert previous commits");
+    confidence = "high";
+  }
+
+  if (!type && /\b(fix|bug|issue|error|crash|resolve|patch|broken|incorrect)\b/i.test(added)) {
+    type = "fix";
+    reasons.push("Changes address bugs or errors");
+    confidence = "high";
+  }
+
+  if (!type && /\b(add|implement|create|new|feature|support|introduce)\b/i.test(added)) {
+    type = "feat";
+    reasons.push("Changes add new functionality");
+    confidence = "high";
+  }
+
+  if (!type && /\b(performance|optimize|speed|fast|cache|lazy|memo|efficient)\b/i.test(added)) {
+    type = "perf";
+    reasons.push("Changes improve performance");
+    confidence = "high";
+  }
+
+  if (!type && /\b(refactor|restructure|reorganize|simplify|extract|rename|move|decouple)\b/i.test(added)) {
+    type = "refactor";
+    reasons.push("Changes restructure code");
+    confidence = "medium";
+  }
+
+  if (!type && files.some(isStyleFile) && !/\b(function|class|const|let|var|import|export)\b/i.test(added)) {
     type = "style";
     reasons.push("Changes appear to be formatting/style only");
     confidence = "medium";

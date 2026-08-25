@@ -53,4 +53,28 @@ describe("classify", () => {
     });
     expect(r.isBreaking).toBe(true);
   });
+
+  it("classifies test even when diff contains fix keywords", () => {
+    const r = classify({
+      files: ["src/foo.test.ts"],
+      diff: "+ expect(fn).toBe(undefined) // fix later\n",
+    });
+    expect(r.type).toBe("test");
+  });
+
+  it("classifies docs even when diff contains feat keywords", () => {
+    const r = classify({
+      files: ["README.md"],
+      diff: "+ add new feature documentation\n",
+    });
+    expect(r.type).toBe("docs");
+  });
+
+  it("does not trigger fix from keywords in removed lines", () => {
+    const r = classify({
+      files: ["src/api.ts"],
+      diff: "-const brokenHandler = () => {}\n+const handler = () => {}\n",
+    });
+    expect(r.type).not.toBe("fix");
+  });
 });

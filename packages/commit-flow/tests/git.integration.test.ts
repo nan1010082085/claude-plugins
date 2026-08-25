@@ -7,7 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 import { classify } from "../src/classify.js";
-import { stagedDiff, stagedFiles, stagedNumstat } from "../src/git.js";
+import {
+  currentBranch,
+  stagedDiff,
+  stagedFiles,
+  stagedNumstat,
+  statusPorcelain,
+  unpushedLog,
+} from "../src/git.js";
 import { parseNumstat } from "../src/message.js";
 
 const dirs: string[] = [];
@@ -48,5 +55,28 @@ describe("git integration", () => {
     expect(c.type === "feat" || c.type === "chore").toBe(true);
     expect(stats.files).toBe(1);
     expect(stats.added).toBeGreaterThan(0);
+  });
+
+  it("status reads branch, porcelain, and unpushed log", () => {
+    const cwd = initRepo();
+    writeFileSync(join(cwd, "a.ts"), "export const a = 1;\n");
+    execFileSync("git", ["add", "a.ts"], { cwd });
+    execFileSync("git", ["commit", "-m", "init"], { cwd });
+
+    const branch = currentBranch({ cwd });
+    expect(typeof branch).toBe("string");
+    expect(branch.length).toBeGreaterThan(0);
+
+    writeFileSync(join(cwd, "b.ts"), "export const b = 2;\n");
+    const porcelain = statusPorcelain({ cwd });
+    expect(porcelain.length).toBeGreaterThan(0);
+    expect(porcelain).toContain("b.ts");
+
+    const staged = stagedFiles({ cwd });
+    expect(staged).toEqual([]);
+
+    const unpushed = unpushedLog({ cwd });
+    expect(unpushed.ok).toBe(false);
+    expect(unpushed.hint).toBeDefined();
   });
 });

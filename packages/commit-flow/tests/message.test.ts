@@ -35,12 +35,21 @@ describe("message", () => {
       why: "Port smart-commit into marketplace.\n\n- add classify\n- add commands",
       impact: "- Agents get /commit-push workflow",
       stats: { files: 3, added: 100, removed: 2 },
+      coAuthor: "Claude <noreply@anthropic.com>",
     });
     expect(msg).toContain("feat(commit-flow): add classify CLI");
     expect(msg).toContain("Port smart-commit");
     expect(msg).toContain("Summary:");
     expect(msg).toContain("Impact:");
     expect(msg).toContain("Co-authored-by: Claude");
+  });
+
+  it("omits Co-authored-by when coAuthor not provided", () => {
+    const msg = buildCommitMessage({
+      classification: base,
+      title: "add classify CLI",
+    });
+    expect(msg).not.toContain("Co-authored-by");
   });
 
   it("parses numstat", () => {

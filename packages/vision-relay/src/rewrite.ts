@@ -1,8 +1,17 @@
 import { createHash } from 'node:crypto'
-import { isIP } from 'node:net'
 import type { Config } from './config.js'
-import { prepareImage, type ImageInput } from './images.js'
+import {
+  assertPublicHttpUrl,
+  estimateBase64Bytes,
+  isLoopbackHost,
+  loadUrlImage,
+  prepareImage,
+  type ImageInput,
+} from './images.js'
 import { describeImage } from './vision.js'
+
+// Re-export for backward compatibility (tests / external consumers import from rewrite.js)
+export { assertPublicHttpUrl, estimateBase64Bytes, isLoopbackHost } from './images.js'
 
 /** 图片描述内存缓存（单会话进程内，有上限） */
 export type DescCache = Map<string, string>
@@ -19,66 +28,6 @@ function cacheSet(cache: DescCache, key: string, value: string, max = DEFAULT_CA
     if (first !== undefined) cache.delete(first)
   }
   cache.set(key, value)
-}
-
-/** 粗估 base64 解码后字节数 */
-export function estimateBase64Bytes(b64: string): number {
-  const len = b64.replace(/\s/g, '').length
-  return Math.floor((len * 3) / 4)
-}
-
-/** 去掉 IPv6 方括号 */
-export function normalizeHost(host: string): string {
-  return host.replace(/^\[|\]$/g, '').toLowerCase()
-}
-
-/** 将 IPv4-mapped IPv6（点分或十六进制）还原为 IPv4 点分 */
-export function ipv4MappedToDotted(host: string): string | null {
-  const h = normalizeHost(host)
-  const dotted = h.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)
-  if (dotted) return dotted[1]!
-  const hex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
-  if (!hex) return null
-  const hi = parseInt(hex[1]!, 16)
-  const lo = parseInt(hex[2]!, 16)
-  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
-}
-
-function isPrivateOrLoopbackIpv4(host: string): boolean {
-  const parts = host.split('.').map(Number)
-  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true
-  const [a, b] = parts
-  if (a === 10 || a === 127 || a === 0) return true
-  if (a === 169 && b === 254) return true
-  if (a === 172 && b! >= 16 && b! <= 31) return true
-  if (a === 192 && b === 168) return true
-  return false
-}
-
-/** 是否为本机 / 回环（含 IPv4-mapped、方括号 IPv6）。不含一般私网（LAN 上游合法）。 */
-export function isLoopbackHost(host: string): boolean {
-  const h = normalizeHost(host)
-  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true
-  if (h === '::1' || h === '0:0:0:0:0:0:0:1') return true
-  const mapped = ipv4MappedToDotted(h)
-  if (mapped) return mapped.startsWith('127.')
-  if (isIP(h) === 4) return h.startsWith('127.')
-  if (isIP(h) === 6) return h === '::1'
-  return false
-}
-
-/** 是否为私网 / 本机 / 链路本地（SSRF 拒绝） */
-export function isPrivateOrLocalHost(host: string): boolean {
-  const h = normalizeHost(host)
-  if (isLoopbackHost(h)) return true
-  if (h === 'metadata.google.internal' || h.endsWith('.internal') || h.endsWith('.local')) return true
-  const mapped = ipv4MappedToDotted(h)
-  if (mapped) return isPrivateOrLoopbackIpv4(mapped)
-  if (isIP(h) === 4) return isPrivateOrLoopbackIpv4(h)
-  if (isIP(h) === 6) {
-    return h === '::1' || h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')
-  }
-  return false
 }
 
 function parseDataUri(url: string, maxBytes: number): ImageInput | null {
@@ -137,64 +86,6 @@ export function imageFromBlock(block: Record<string, unknown>, maxBytes: number)
     }
   }
   return null
-}
-
-/** 拒绝非 http(s)、私网/回环/链路本地，降低 SSRF 面 */
-export function assertPublicHttpUrl(raw: string): URL {
-  let u: URL
-  try {
-    u = new URL(raw)
-  } catch {
-    throw new Error('非法图片 URL')
-  }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-    throw new Error(`不允许的 URL 协议: ${u.protocol}`)
-  }
-  if (isPrivateOrLocalHost(u.hostname)) {
-    throw new Error('禁止访问本机/私网图片 URL')
-  }
-  return u
-}
-
-async function loadUrlImage(url: string, maxBytes: number, timeoutMs: number): Promise<ImageInput> {
-  assertPublicHttpUrl(url)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, { signal: controller.signal, redirect: 'error' })
-    if (!res.ok) throw new Error(`下载图片失败 HTTP ${res.status}`)
-    const cl = res.headers.get('content-length')
-    if (cl && Number(cl) > maxBytes) throw new Error('图片超过硬上限')
-    const reader = res.body?.getReader()
-    if (!reader) {
-      const buf = Buffer.from(await res.arrayBuffer())
-      if (buf.length > maxBytes) throw new Error('图片超过硬上限')
-      return {
-        data: buf,
-        mediaType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
-        source: url,
-      }
-    }
-    const chunks: Buffer[] = []
-    let total = 0
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > maxBytes) {
-        reader.cancel().catch(() => {})
-        throw new Error('图片超过硬上限')
-      }
-      chunks.push(Buffer.from(value))
-    }
-    return {
-      data: Buffer.concat(chunks),
-      mediaType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
-      source: url,
-    }
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 async function describeBlock(

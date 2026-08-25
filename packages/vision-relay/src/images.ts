@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { isIP } from 'node:net'
 import { isAbsolute, join, resolve } from 'node:path'
 import { claudeConfigDir, userHome } from './paths.js'
 
@@ -27,6 +28,125 @@ export interface ImageInput {
   data: Buffer
   mediaType: string
   source: string
+}
+
+/** 粗估 base64 解码后字节数 */
+export function estimateBase64Bytes(b64: string): number {
+  const len = b64.replace(/\s/g, '').length
+  return Math.floor((len * 3) / 4)
+}
+
+/** 去掉 IPv6 方括号 */
+export function normalizeHost(host: string): string {
+  return host.replace(/^\[|\]$/g, '').toLowerCase()
+}
+
+/** 将 IPv4-mapped IPv6（点分或十六进制）还原为 IPv4 点分 */
+export function ipv4MappedToDotted(host: string): string | null {
+  const h = normalizeHost(host)
+  const dotted = h.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i)
+  if (dotted) return dotted[1]!
+  const hex = h.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
+  if (!hex) return null
+  const hi = parseInt(hex[1]!, 16)
+  const lo = parseInt(hex[2]!, 16)
+  return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
+}
+
+function isPrivateOrLoopbackIpv4(host: string): boolean {
+  const parts = host.split('.').map(Number)
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return true
+  const [a, b] = parts
+  if (a === 10 || a === 127 || a === 0) return true
+  if (a === 169 && b === 254) return true
+  if (a === 172 && b! >= 16 && b! <= 31) return true
+  if (a === 192 && b === 168) return true
+  return false
+}
+
+/** 是否为本机 / 回环（含 IPv4-mapped、方括号 IPv6）。不含一般私网。 */
+export function isLoopbackHost(host: string): boolean {
+  const h = normalizeHost(host)
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '0.0.0.0') return true
+  if (h === '::1' || h === '0:0:0:0:0:0:0:1') return true
+  const mapped = ipv4MappedToDotted(h)
+  if (mapped) return mapped.startsWith('127.')
+  if (isIP(h) === 4) return h.startsWith('127.')
+  if (isIP(h) === 6) return h === '::1'
+  return false
+}
+
+/** 是否为私网 / 本机 / 链路本地（SSRF 拒绝） */
+export function isPrivateOrLocalHost(host: string): boolean {
+  const h = normalizeHost(host)
+  if (isLoopbackHost(h)) return true
+  if (h === 'metadata.google.internal' || h.endsWith('.internal') || h.endsWith('.local')) return true
+  const mapped = ipv4MappedToDotted(h)
+  if (mapped) return isPrivateOrLoopbackIpv4(mapped)
+  if (isIP(h) === 4) return isPrivateOrLoopbackIpv4(h)
+  if (isIP(h) === 6) {
+    return h === '::1' || h.startsWith('fe80:') || h.startsWith('fc') || h.startsWith('fd')
+  }
+  return false
+}
+
+/** 拒绝非 http(s)、私网/回环/链路本地，降低 SSRF 面 */
+export function assertPublicHttpUrl(raw: string): URL {
+  let u: URL
+  try {
+    u = new URL(raw)
+  } catch {
+    throw new Error('非法图片 URL')
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(`不允许的 URL 协议: ${u.protocol}`)
+  }
+  if (isPrivateOrLocalHost(u.hostname)) {
+    throw new Error('禁止访问本机/私网图片 URL')
+  }
+  return u
+}
+
+/** 安全下载图片：SSRF 检查 + 超时 + 流式大小限制 */
+export async function loadUrlImage(url: string, maxBytes: number, timeoutMs: number): Promise<ImageInput> {
+  assertPublicHttpUrl(url)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { signal: controller.signal, redirect: 'error' })
+    if (!res.ok) throw new Error(`下载图片失败 HTTP ${res.status}`)
+    const cl = res.headers.get('content-length')
+    if (cl && Number(cl) > maxBytes) throw new Error('图片超过硬上限')
+    const reader = res.body?.getReader()
+    if (!reader) {
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length > maxBytes) throw new Error('图片超过硬上限')
+      return {
+        data: buf,
+        mediaType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
+        source: url,
+      }
+    }
+    const chunks: Buffer[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        reader.cancel().catch(() => {})
+        throw new Error('图片超过硬上限')
+      }
+      chunks.push(Buffer.from(value))
+    }
+    return {
+      data: Buffer.concat(chunks),
+      mediaType: res.headers.get('content-type')?.split(';')[0] || 'image/png',
+      source: url,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -81,25 +201,20 @@ export async function readImageRef(
   ref: ImageRef,
   cwd: string,
   maxBytes: number = DEFAULT_MAX_IMAGE_BYTES,
+  timeoutMs: number = 30_000,
 ): Promise<ImageInput> {
   const mediaType = mediaTypeFor(ref.value)
   if (!mediaType) throw new Error(`无法识别图片类型: ${ref.value}`)
-  const sizeError = (n: number): Error =>
-    new Error(`图片 ${(n / 1024 / 1024).toFixed(1)}MB 超过硬上限 ${(maxBytes / 1024 / 1024).toFixed(0)}MB（可调 config: vision.maxImageBytes）: ${ref.value}`)
   if (ref.kind === 'url') {
-    const res = await fetch(ref.value)
-    if (!res.ok) throw new Error(`下载图片失败 HTTP ${res.status}`)
-    const buf = Buffer.from(await res.arrayBuffer())
-    if (buf.length > maxBytes) throw sizeError(buf.length)
-    return {
-      data: buf,
-      mediaType: res.headers.get('content-type')?.split(';')[0] || mediaType,
-      source: ref.value,
-    }
+    return loadUrlImage(ref.value, maxBytes, timeoutMs)
   }
   const p = expandPath(ref.value, cwd)
   const size = statSync(p).size
-  if (size > maxBytes) throw sizeError(size)
+  if (size > maxBytes) {
+    throw new Error(
+      `图片 ${(size / 1024 / 1024).toFixed(1)}MB 超过硬上限 ${(maxBytes / 1024 / 1024).toFixed(0)}MB（可调 config: vision.maxImageBytes）: ${ref.value}`,
+    )
+  }
   return { data: readFileSync(p), mediaType, source: p }
 }
 

@@ -31,6 +31,16 @@ describe("branch", () => {
     ).toBe("feat/AUTH-12-fix-login");
   });
 
+  it("uses explicit ticketId parameter over classification", () => {
+    expect(
+      suggestBranchName(base, "fix login", "PROJ-42"),
+    ).toBe("feat/PROJ-42-fix-login");
+  });
+
+  it("falls back to change when title is empty", () => {
+    expect(suggestBranchName(base, "")).toBe("feat/commit-flow-change");
+  });
+
   it("validates branch names", () => {
     expect(isValidBranchName("feat/foo-bar")).toBe(true);
     expect(isValidBranchName("../evil")).toBe(false);

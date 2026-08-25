@@ -18,6 +18,8 @@ export interface BuildMessageOptions {
   stats?: DiffStats;
   /** 额外 footer 行 */
   footers?: string[];
+  /** Co-author 署名（如 "Claude <noreply@anthropic.com>"）；省略则不加 */
+  coAuthor?: string;
 }
 
 /**
@@ -76,7 +78,9 @@ export function buildCommitMessage(opts: BuildMessageOptions): string {
   if (c.ticketId) {
     footerLines.push(`Refs: ${c.ticketId}`);
   }
-  footerLines.push("Co-authored-by: Claude <noreply@anthropic.com>");
+  if (opts.coAuthor) {
+    footerLines.push(`Co-authored-by: ${opts.coAuthor}`);
+  }
 
   return [subject, "", ...bodyParts, "", ...footerLines].join("\n");
 }

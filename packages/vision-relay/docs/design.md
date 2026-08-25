@@ -1,6 +1,6 @@
 # vision-relay 设计与测试方案
 
-> 状态：**v0.10.2** = `/vision` + MCP（path / clipboard / recent / #N）+ hook + 可选 **`vision-relay claude`** 会话粘贴改写。
+> 状态：**v0.11.0** = `/vision` + MCP（path / clipboard / recent / #N）+ hook + 可选 **`vision-relay claude`** 会话粘贴改写。
 >
 > 2026-08-20 从零开发；常驻代理已删除；会话包装用 `--settings` 覆盖 BASE_URL（不写盘）。
 
