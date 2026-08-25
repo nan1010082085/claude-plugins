@@ -2,6 +2,16 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { claudeConfigDir, userHome } from './paths.js'
 
+/** Claude projects 目录下 cwd 编码：`/Users/foo/bar` → `-Users-foo-bar` */
+export function encodeClaudeProjectKey(cwd: string): string {
+  return resolve(cwd).replace(/\//g, '-')
+}
+
+/** 会话 transcript 默认路径（hook stdin 未带 transcript_path 时的兜底） */
+export function claudeProjectTranscriptPath(sessionId: string, cwd: string): string {
+  return join(claudeConfigDir(), 'projects', encodeClaudeProjectKey(cwd), `${sessionId}.jsonl`)
+}
+
 export const DEFAULT_MAX_IMAGE_BYTES = 100 * 1024 * 1024
 export const DEFAULT_TARGET_IMAGE_BYTES = 5 * 1024 * 1024
 export const DEFAULT_MAX_IMAGE_EDGE = 8000
@@ -166,6 +176,192 @@ export function claudeImageCacheRoot(): string {
   return join(claudeConfigDir(), 'image-cache')
 }
 
+/** 从 Anthropic / Claude Code content block 抽出图片（与 rewrite.imageFromBlock 对齐） */
+function imageFromContentBlock(block: Record<string, unknown>, maxBytes: number): ImageInput | null {
+  const type = block.type
+  if (type === 'image') {
+    const source = block.source
+    if (source && typeof source === 'object') {
+      const s = source as Record<string, unknown>
+      if (s.type === 'base64' && typeof s.data === 'string') {
+        const data = Buffer.from(s.data, 'base64')
+        if (data.length > maxBytes) return null
+        const mt = typeof s.media_type === 'string' ? s.media_type : 'image/png'
+        return { data, mediaType: mt, source: 'transcript:base64' }
+      }
+    }
+    if (block.file && typeof block.file === 'object') {
+      const file = block.file as Record<string, unknown>
+      if (typeof file.base64 === 'string') {
+        const data = Buffer.from(file.base64, 'base64')
+        if (data.length > maxBytes) return null
+        const mt = typeof file.type === 'string' ? file.type : 'image/png'
+        return { data, mediaType: mt, source: 'transcript:file' }
+      }
+    }
+  }
+  if (type === 'image_url' && block.image_url && typeof block.image_url === 'object') {
+    const url = (block.image_url as Record<string, unknown>).url
+    if (typeof url === 'string' && url.startsWith('data:')) {
+      const m = url.match(/^data:([^;]+);base64,(.+)$/i)
+      if (!m) return null
+      const data = Buffer.from(m[2]!, 'base64')
+      if (data.length > maxBytes) return null
+      return { data, mediaType: m[1]!, source: 'transcript:data-uri' }
+    }
+  }
+  return null
+}
+
+function firstImageInContent(content: unknown, maxBytes: number): ImageInput | null {
+  if (!Array.isArray(content)) return null
+  for (const raw of content) {
+    if (!raw || typeof raw !== 'object') continue
+    const img = imageFromContentBlock(raw as Record<string, unknown>, maxBytes)
+    if (img) return img
+  }
+  return null
+}
+
+interface TranscriptImageHit {
+  image: ImageInput
+  ts: number
+  pasteId?: number
+}
+
+/** 解析 transcript jsonl 单行 */
+function parseTranscriptLine(line: string): Record<string, unknown> | null {
+  try {
+    const j = JSON.parse(line) as Record<string, unknown>
+    return j && typeof j === 'object' ? j : null
+  } catch {
+    return null
+  }
+}
+
+function transcriptTimestamp(entry: Record<string, unknown>): number {
+  const t = entry.timestamp
+  if (typeof t === 'string') {
+    const ms = Date.parse(t)
+    if (!Number.isNaN(ms)) return ms
+  }
+  return 0
+}
+
+/** 扫描 transcript 中所有用户图片（按时间排序） */
+function collectTranscriptImages(transcriptPath: string, maxBytes: number): TranscriptImageHit[] {
+  if (!existsSync(transcriptPath)) return []
+  const hits: TranscriptImageHit[] = []
+  try {
+    const lines = readFileSync(transcriptPath, 'utf8').split('\n')
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const entry = parseTranscriptLine(line)
+      if (!entry || entry.type !== 'user') continue
+      const message = entry.message
+      if (!message || typeof message !== 'object') continue
+      const content = (message as Record<string, unknown>).content
+      const img = firstImageInContent(content, maxBytes)
+      if (!img) continue
+      const pasteIds = Array.isArray(entry.imagePasteIds)
+        ? (entry.imagePasteIds as number[]).filter((n) => Number.isFinite(n))
+        : []
+      hits.push({
+        image: img,
+        ts: transcriptTimestamp(entry),
+        pasteId: pasteIds[0],
+      })
+    }
+  } catch {
+    return []
+  }
+  hits.sort((a, b) => a.ts - b.ts)
+  return hits
+}
+
+/**
+ * 从 transcript jsonl 读取 `[Image #N]` 对应图片（image-cache 被清理后的兜底）。
+ * 优先匹配 `imagePasteIds`；否则匹配同条消息文本中的 `[Image #N]`。
+ */
+export function loadPastedImageFromTranscript(
+  transcriptPath: string,
+  n: number,
+  maxBytes: number,
+): ImageInput | null {
+  if (!existsSync(transcriptPath)) return null
+  try {
+    const lines = readFileSync(transcriptPath, 'utf8').split('\n')
+    let fallback: ImageInput | null = null
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const entry = parseTranscriptLine(line)
+      if (!entry || entry.type !== 'user') continue
+      const message = entry.message
+      if (!message || typeof message !== 'object') continue
+      const content = (message as Record<string, unknown>).content
+      const img = firstImageInContent(content, maxBytes)
+      if (!img) continue
+      const pasteIds = Array.isArray(entry.imagePasteIds) ? (entry.imagePasteIds as number[]) : []
+      if (pasteIds.includes(n)) {
+        return { ...img, source: `粘贴图片 [Image #${n}]（transcript）` }
+      }
+      const textParts = Array.isArray(content)
+        ? content
+            .filter((b) => b && typeof b === 'object' && (b as { type?: string }).type === 'text')
+            .map((b) => String((b as { text?: string }).text ?? ''))
+            .join('\n')
+        : typeof content === 'string'
+          ? content
+          : ''
+      if (textParts.includes(`[Image #${n}]`) && !fallback) {
+        fallback = { ...img, source: `粘贴图片 [Image #${n}]（transcript）` }
+      }
+    }
+    return fallback
+  } catch {
+    return null
+  }
+}
+
+/** 列出 `~/.claude/projects` 下全部 transcript（按文件 mtime 新→旧） */
+function listTranscriptPaths(): string[] {
+  const root = join(claudeConfigDir(), 'projects')
+  if (!existsSync(root)) return []
+  const out: Array<{ p: string; m: number }> = []
+  try {
+    for (const project of readdirSync(root, { withFileTypes: true })) {
+      if (!project.isDirectory()) continue
+      const dir = join(root, project.name)
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith('.jsonl')) continue
+        const p = join(dir, f)
+        try {
+          out.push({ p, m: statSync(p).mtimeMs })
+        } catch {}
+      }
+    }
+  } catch {
+    return []
+  }
+  out.sort((a, b) => b.m - a.m)
+  return out.map((x) => x.p)
+}
+
+/** transcript 中最近一张用户粘贴图 */
+export function loadRecentImageFromTranscripts(maxBytes: number, preferPath?: string): ImageInput | null {
+  const paths = preferPath && existsSync(preferPath) ? [preferPath] : listTranscriptPaths()
+  let best: { image: ImageInput; ts: number; path: string } | null = null
+  for (const p of paths) {
+    for (const hit of collectTranscriptImages(p, maxBytes)) {
+      if (!best || hit.ts > best.ts) {
+        best = { image: hit.image, ts: hit.ts, path: p }
+      }
+    }
+  }
+  if (!best) return null
+  return { ...best.image, source: `recent transcript → ${best.path}` }
+}
+
 /**
  * 解析 Claude Code `[Image #N]` 对应的落盘路径。
  * 有 sessionId 用该目录；否则取最近更新的会话目录。
@@ -192,21 +388,39 @@ export function resolveClaudePastedImagePath(n: number, sessionId?: string): str
   return null
 }
 
-/** 读取粘贴缓存为 ImageInput；超 maxBytes 则返回 null */
-export function loadClaudePastedImage(n: number, maxBytes: number, sessionId?: string): ImageInput | null {
+/**
+ * 读取粘贴图为 ImageInput。
+ * 顺序：image-cache → transcript jsonl（Claude 常清理 cache，但 transcript 仍含 base64）。
+ */
+export function loadClaudePastedImage(
+  n: number,
+  maxBytes: number,
+  sessionId?: string,
+  transcriptPath?: string,
+  cwd?: string,
+): ImageInput | null {
   const p = resolveClaudePastedImagePath(n, sessionId)
-  if (!p) return null
-  try {
-    const size = statSync(p).size
-    if (size > maxBytes) return null
-    return {
-      data: readFileSync(p),
-      mediaType: mediaTypeFor(p) ?? 'image/png',
-      source: `粘贴图片 [Image #${n}]`,
-    }
-  } catch {
-    return null
+  if (p) {
+    try {
+      const size = statSync(p).size
+      if (size <= maxBytes) {
+        return {
+          data: readFileSync(p),
+          mediaType: mediaTypeFor(p) ?? 'image/png',
+          source: `粘贴图片 [Image #${n}]`,
+        }
+      }
+    } catch {}
   }
+  const candidates = [
+    transcriptPath,
+    sessionId && cwd ? claudeProjectTranscriptPath(sessionId, cwd) : undefined,
+  ].filter((x): x is string => typeof x === 'string' && x.length > 0)
+  for (const tp of candidates) {
+    const fromTranscript = loadPastedImageFromTranscript(tp, n, maxBytes)
+    if (fromTranscript) return fromTranscript
+  }
+  return null
 }
 
 /** 从用户输入解析粘贴序号：`#1` / `1` / `[Image #1]` */

@@ -133,7 +133,7 @@ describe('runClaudeCodeHook', () => {
     writePastedImage('sess-1', 1)
     const input = JSON.stringify({ session_id: 'sess-1', prompt: '[Image #1] 这个报错怎么修' })
     const { additionalContext } = await runClaudeCodeHook(input, cwd)
-    expect(additionalContext).toContain('[vision-relay 图片 #1: 粘贴图片 [Image #1]]')
+    expect(additionalContext).toContain('[vision-relay 粘贴图片 [Image #1]]')
     expect(additionalContext).toContain('TypeError')
     expect(describeImageMock).toHaveBeenCalledTimes(1)
   })
@@ -171,8 +171,79 @@ describe('runClaudeCodeHook', () => {
     const { additionalContext } = await runClaudeCodeHook(input, cwd)
     expect(additionalContext).toContain('[vision-relay]')
     expect(additionalContext).toContain('[Image #1]')
-    expect(additionalContext).toContain('文件路径或 URL')
+    expect(additionalContext).toContain('clipboard')
     expect(describeImageMock).not.toHaveBeenCalled()
+  })
+
+  it('image-cache 缺失时从 transcript_path 读取粘贴图', async () => {
+    const sessionId = 'sess-transcript'
+    const transcriptDir = join(claudeDir, 'projects', '-tmp-hook-cwd')
+    mkdirSync(transcriptDir, { recursive: true })
+    const transcriptPath = join(transcriptDir, `${sessionId}.jsonl`)
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    const line = JSON.stringify({
+      type: 'user',
+      timestamp: '2026-08-24T12:00:00.000Z',
+      imagePasteIds: [4],
+      message: {
+        role: 'user',
+        content: [
+          { type: 'text', text: '[Image #4] 这个报错怎么修' },
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: tinyPng },
+          },
+        ],
+      },
+    })
+    writeFileSync(transcriptPath, `${line}\n`)
+    const input = JSON.stringify({
+      session_id: sessionId,
+      transcript_path: transcriptPath,
+      cwd,
+      prompt: '[Image #4] 这个报错怎么修',
+    })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+    expect(additionalContext).toContain('[Image #4]')
+    expect(additionalContext).toContain('TypeError')
+  })
+
+  it('prompt 含历史 [Image #1] 但只解析到 [Image #4] 时不报全失败', async () => {
+    const sessionId = 'sess-partial'
+    const transcriptDir = join(claudeDir, 'projects', '-tmp-hook-cwd')
+    mkdirSync(transcriptDir, { recursive: true })
+    const transcriptPath = join(transcriptDir, `${sessionId}.jsonl`)
+    const tinyPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+    writeFileSync(
+      transcriptPath,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: '2026-08-24T12:00:00.000Z',
+        imagePasteIds: [4],
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '[Image #4] 新问题' },
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/png', data: tinyPng },
+            },
+          ],
+        },
+      })}\n`,
+    )
+    const input = JSON.stringify({
+      session_id: sessionId,
+      transcript_path: transcriptPath,
+      cwd,
+      prompt: '[Image #4] 新问题（附带历史引用 [Image #1]）',
+    })
+    const { additionalContext, systemMessage } = await runClaudeCodeHook(input, cwd)
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+    expect(additionalContext).toContain('[Image #4]')
+    expect(systemMessage).toContain('✓')
+    expect(additionalContext).not.toContain('未能获取其内容')
   })
 
   it('[Pasted text #N] 也触发提示', async () => {

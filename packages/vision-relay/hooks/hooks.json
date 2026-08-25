@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "npx -y vision-relay@latest hook"
+            "command": "vision-relay hook || npx -y vision-relay@latest hook",
+            "timeout": 120
           }
         ]
       }

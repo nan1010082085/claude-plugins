@@ -23,15 +23,28 @@ function detectImageRefNums(prompt: string): number[] {
   return [...new Set([...prompt.matchAll(IMAGE_REF_RE)].map((m) => Number(m[1])))]
 }
 
-function resolvePastedImage(sessionId: string | undefined, n: number, maxBytes: number): ImageInput | null {
-  return loadClaudePastedImage(n, maxBytes, sessionId)
+function resolvePastedImage(
+  sessionId: string | undefined,
+  n: number,
+  maxBytes: number,
+  transcriptPath?: string,
+  cwd?: string,
+): ImageInput | null {
+  return loadClaudePastedImage(n, maxBytes, sessionId, transcriptPath, cwd)
 }
 
 /** 从 stdin JSON 中提取 Claude Code 传入的图片数据（base64 content block） */
 function extractInlineImages(parsed: Record<string, unknown>): ImageInput[] {
   const images: ImageInput[] = []
-  // 可能的字段：images, content, contentBlocks
-  const candidates = [parsed.images, parsed.content, parsed.contentBlocks].filter(Array.isArray) as unknown[][]
+  // 可能的字段：images, content, contentBlocks, message.content
+  const message = parsed.message
+  const messageContent =
+    message && typeof message === 'object'
+      ? (message as Record<string, unknown>).content
+      : undefined
+  const candidates = [parsed.images, parsed.content, parsed.contentBlocks, messageContent].filter(
+    Array.isArray,
+  ) as unknown[][]
   for (const arr of candidates) {
     for (const item of arr) {
       if (!item || typeof item !== 'object') continue
@@ -45,7 +58,16 @@ function extractInlineImages(parsed: Record<string, unknown>): ImageInput[] {
           images.push({ data: buf, mediaType: mt, source: 'stdin:image' })
         }
       }
-      // 格式2: { type: "image_url", image_url: { url: "data:..." } }
+      // 格式2: Anthropic { type: "image", source: { type: "base64", media_type, data } }
+      if (block.type === 'image' && block.source && typeof block.source === 'object') {
+        const source = block.source as Record<string, unknown>
+        if (source.type === 'base64' && typeof source.data === 'string') {
+          const buf = Buffer.from(source.data, 'base64')
+          const mt = typeof source.media_type === 'string' ? source.media_type : 'image/png'
+          images.push({ data: buf, mediaType: mt, source: 'stdin:anthropic-base64' })
+        }
+      }
+      // 格式3: { type: "image_url", image_url: { url: "data:..." } }
       if (block.type === 'image_url' && block.image_url && typeof block.image_url === 'object') {
         const imgUrl = (block.image_url as Record<string, unknown>).url
         if (typeof imgUrl === 'string' && imgUrl.startsWith('data:')) {
@@ -168,11 +190,14 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
       }
     }
 
-    // [Image #N] 粘贴图片：从 image-cache 读取，用户粘贴即可用，无需任何额外操作
+    // [Image #N] 粘贴图片：image-cache → transcript jsonl（cache 常被 Claude 清理）
     const sessionId = typeof rawParsed?.session_id === 'string' ? rawParsed.session_id : undefined
+    const transcriptPath =
+      typeof rawParsed?.transcript_path === 'string' ? rawParsed.transcript_path : undefined
+    const hookCwd = typeof rawParsed?.cwd === 'string' ? rawParsed.cwd : cwd
     const imageNums = detectImageRefNums(prompt)
     const pastedImages = imageNums
-      .map((n) => resolvePastedImage(sessionId, n, config.vision.maxImageBytes))
+      .map((n) => resolvePastedImage(sessionId, n, config.vision.maxImageBytes, transcriptPath, hookCwd))
       .filter((img): img is ImageInput => img !== null)
 
     // 粘贴图片与路径/URL 引用合并，并行识别：总耗时 = 最慢一张，而非串行累加
@@ -182,14 +207,21 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
     ].slice(0, config.hook.maxImages)
 
     if (!tasks.length) {
-      // 粘贴图片缓存缺失（会话已清理/过期）或其他无法解析的内联引用时才提示
+      // 仅列出未能解析的 [Image #N]（prompt 里可能有历史占位符如 #1，当前轮只有 #4）
       const inlineRefs = detectInlineRefs(prompt)
-      if (imageNums.length || inlineRefs.length) {
-        const refsLabel = [...imageNums.map((n) => `[Image #${n}]`), ...inlineRefs].join('、')
+      const failedImageNums = imageNums.filter(
+        (n) => !pastedImages.some((img) => img.source.includes(`[Image #${n}]`)),
+      )
+      if (failedImageNums.length || inlineRefs.length) {
+        const refsLabel = [
+          ...failedImageNums.map((n) => `[Image #${n}]`),
+          ...inlineRefs,
+        ].join('、')
         const hint = [
           `[vision-relay] 用户消息包含内联引用（${refsLabel}），但未能获取其内容。`,
-          '粘贴图片的缓存已失效时，可让用户改用图片文件路径或 URL 重新发送，例如：',
+          'image-cache 已清理时，hook 会读 transcript；若仍失败请改用路径或 clipboard：',
           '  /vision ./screenshot.png 这个报错怎么修',
+          '  /vision clipboard 看看剪贴板这张图',
         ].join('\n')
         return {
           additionalContext: hint,
@@ -211,9 +243,12 @@ export async function runClaudeCodeHook(input: string, cwd: string): Promise<Hoo
     )
     const parts = tasks.map((task, i) => {
       const r = results[i]!
+      const header = task.source.match(/\[Image #\d+\]/)
+        ? `[vision-relay ${task.source}]`
+        : `[vision-relay 图片 #${i + 1}: ${task.source}]`
       return r.status === 'fulfilled'
-        ? `[vision-relay 图片 #${i + 1}: ${task.source}]\n${r.value}`
-        : `[vision-relay 图片 #${i + 1}: ${task.source}] 识别失败: ${(r.reason as Error).message}`
+        ? `${header}\n${r.value}`
+        : `${header} 识别失败: ${(r.reason as Error).message}`
     })
     const sum = summarizeResults(
       tasks.map((t) => t.source),

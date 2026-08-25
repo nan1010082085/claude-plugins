@@ -40,6 +40,39 @@ describe('resolveImageInput', () => {
     expect(r.kind).toBe('recent')
   })
 
+  it('recent 从 transcript jsonl 兜底（无 image-cache）', async () => {
+    const home = join(tmpdir(), `vr-home3-${Date.now()}`)
+    const claudeDir = join(home, '.claude')
+    const transcriptDir = join(claudeDir, 'projects', '-tmp-recent')
+    mkdirSync(transcriptDir, { recursive: true })
+    const transcriptPath = join(transcriptDir, 'sess-recent.jsonl')
+    writeFileSync(
+      transcriptPath,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: '2026-08-24T12:00:00.000Z',
+        imagePasteIds: [1],
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: TINY_PNG_BASE64,
+              },
+            },
+          ],
+        },
+      })}\n`,
+    )
+    process.env.CLAUDE_CONFIG_DIR = claudeDir
+    const r = await resolveImageInput({ path: 'recent', maxBytes: 1_000_000, transcriptPath })
+    expect(r.kind).toBe('recent')
+    expect(r.image.data.length).toBeGreaterThan(0)
+  })
+
   it('缺参数抛错并提示 clipboard', async () => {
     await expect(resolveImageInput({ maxBytes: 100 })).rejects.toThrow(/clipboard/)
   })

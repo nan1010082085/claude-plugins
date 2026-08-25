@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   claudeImageCacheRoot,
+  loadClaudePastedImage,
+  loadRecentImageFromTranscripts,
   mediaTypeFor,
   parsePastedImageRef,
   readImageRef,
@@ -41,23 +43,28 @@ function latestFileInDir(dir: string, re: RegExp): string | null {
   }
 }
 
-/** Claude image-cache 中最近一张；Codex attachments 兜底 */
+/** Claude image-cache / Codex attachments 中最近一张**文件路径**（不含 transcript） */
 export function resolveRecentImagePath(): string | null {
   const cacheRoot = claudeImageCacheRoot()
+  const cacheHits: Array<{ p: string; m: number }> = []
   if (existsSync(cacheRoot)) {
     try {
-      const sessions = readdirSync(cacheRoot, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => {
-          const dir = join(cacheRoot, e.name)
-          return { dir, m: statSync(dir).mtimeMs }
-        })
-        .sort((a, b) => b.m - a.m)
-      for (const s of sessions) {
-        const hit = latestFileInDir(s.dir, /^\d+\.(png|jpe?g|gif|webp|bmp)$/i)
-        if (hit) return hit
+      for (const session of readdirSync(cacheRoot, { withFileTypes: true })) {
+        if (!session.isDirectory()) continue
+        const dir = join(cacheRoot, session.name)
+        for (const f of readdirSync(dir)) {
+          if (!/^\d+\.(png|jpe?g|gif|webp|bmp)$/i.test(f)) continue
+          const p = join(dir, f)
+          try {
+            cacheHits.push({ p, m: statSync(p).mtimeMs })
+          } catch {}
+        }
       }
     } catch {}
+  }
+  if (cacheHits.length) {
+    cacheHits.sort((a, b) => b.m - a.m)
+    return cacheHits[0]!.p
   }
   const codexAtt = join(codexHome(), 'attachments')
   if (existsSync(codexAtt)) {
@@ -140,6 +147,9 @@ export interface ResolveImageArgs {
   source?: string
   cwd?: string
   maxBytes: number
+  /** Claude Code hook stdin：会话 transcript jsonl */
+  transcriptPath?: string
+  sessionId?: string
 }
 
 /**
@@ -186,25 +196,39 @@ export async function resolveImageInput(args: ResolveImageArgs): Promise<Resolve
   }
   if (alias === 'recent' || alias === 'latest') {
     const p = resolveRecentImagePath()
-    if (!p) {
-      throw new Error(
-        '未找到 recent 图片（无 Claude image-cache / Codex attachments）。请改用文件路径或 path=clipboard',
-      )
+    if (p) {
+      const image = await readImageRef({ kind: 'path', value: p }, cwd, maxBytes)
+      return { image, label: `recent → ${p}`, kind: 'recent' }
     }
-    const image = await readImageRef({ kind: 'path', value: p }, cwd, maxBytes)
-    return { image, label: `recent → ${p}`, kind: 'recent' }
+    const fromTranscript = loadRecentImageFromTranscripts(maxBytes, args.transcriptPath)
+    if (fromTranscript) {
+      return { image: fromTranscript, label: fromTranscript.source, kind: 'recent' }
+    }
+    throw new Error(
+      '未找到 recent 图片（无 image-cache / transcript / Codex attachments）。请改用文件路径或 path=clipboard',
+    )
   }
 
   const pasted = parsePastedImageRef(args.path || args.source || '')
   if (pasted !== null) {
     const cached = resolveClaudePastedImagePath(pasted)
-    if (!cached) {
-      throw new Error(
-        `未找到粘贴缓存 [Image #${pasted}]。请用文件路径，或 path=recent / path=clipboard`,
-      )
+    if (cached) {
+      const image = await readImageRef({ kind: 'path', value: cached }, cwd, maxBytes)
+      return { image, label: `[Image #${pasted}] → ${cached}`, kind: 'pasted' }
     }
-    const image = await readImageRef({ kind: 'path', value: cached }, cwd, maxBytes)
-    return { image, label: `[Image #${pasted}] → ${cached}`, kind: 'pasted' }
+    const fromTranscript = loadClaudePastedImage(
+      pasted,
+      maxBytes,
+      args.sessionId,
+      args.transcriptPath,
+      cwd,
+    )
+    if (fromTranscript) {
+      return { image: fromTranscript, label: fromTranscript.source, kind: 'pasted' }
+    }
+    throw new Error(
+      `未找到粘贴缓存 [Image #${pasted}]（image-cache 已清理且 transcript 无匹配）。请用文件路径，或 path=recent / path=clipboard`,
+    )
   }
 
   if (args.url || /^https?:\/\//i.test(raw)) {
