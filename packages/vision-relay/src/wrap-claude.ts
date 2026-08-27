@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -149,6 +149,30 @@ function cleanupSettingsFile(file: string): void {
 }
 
 /**
+ * Windows 上解析 claude 可执行文件路径。
+ * nvm4w 等环境的 node_modules 路径含 '@'，shell:true 时 cmd.exe 处理不了。
+ * 优先用 `where claude` 找到真实路径后直接 spawn（不走 shell）。
+ */
+function resolveClaudeBin(): { command: string; useShell: boolean } {
+  const envBin = process.env.VISION_RELAY_CLAUDE_BIN
+  if (envBin) return { command: envBin, useShell: isWindows() }
+
+  if (!isWindows()) return { command: 'claude', useShell: false }
+
+  // Windows: 用 `where` 找 claude 的真实路径，避免 shell 对 '@' 等特殊字符的处理问题
+  try {
+    const r = spawnSync('where', ['claude'], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
+    if (r.status === 0 && r.stdout) {
+      const first = r.stdout.trim().split(/\r?\n/)[0]!.trim()
+      if (first && existsSync(first)) return { command: first, useShell: false }
+    }
+  } catch {}
+
+  // fallback: 用 shell 模式（claude.cmd / claude.exe 在 PATH 中）
+  return { command: 'claude', useShell: true }
+}
+
+/**
  * 启动会话改写并拉起 Claude Code。
  * - 不写 ~/.claude/settings.json（临时 --settings 文件）
  * - 不改模型名 / token / cc-switch 磁盘配置
@@ -175,18 +199,17 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
   console.error('')
 
-  const bin = process.env.VISION_RELAY_CLAUDE_BIN || 'claude'
+  const { command: bin, useShell } = resolveClaudeBin()
   const childEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxy.baseUrl,
   }
 
   const exitCode = await new Promise<number>((resolve) => {
-    // Windows 上 shell:true 会拆坏内联 JSON；现已改用文件路径，仍可用 shell 解析 PATH 里的 .cmd
     const child = spawn(bin, claudeArgs, {
       env: childEnv,
       stdio: 'inherit',
-      shell: isWindows(),
+      shell: useShell,
       windowsHide: true,
     })
     const shutdown = async (code: number) => {

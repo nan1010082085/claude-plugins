@@ -1,11 +1,12 @@
 {
   "name": "vision-relay",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "为无视觉能力的编码模型中转图片理解：识别时向用户展示简略状态（hook systemMessage / MCP / describe）",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "vision-relay": "dist/index.js"
+    "vision-relay": "dist/index.js",
+    "vr": "dist/index.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
