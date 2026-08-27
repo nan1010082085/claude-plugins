@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as p from '@clack/prompts'
 import pc from 'picocolors'
+import { getClaudeCodeVersion, needsMatcherField } from './claude-version.js'
 import {
   claudeConfigDir,
   claudeSettingsPath,
@@ -111,7 +112,7 @@ export const CLAUDE_HOOK_TIMEOUT_SEC = 120
 
 /**
  * 确保 settings 里 vision-relay hook 存在且 timeout 足够。
- * 已存在但缺 timeout / 过短 / Windows 命令行过时 时就地修补。
+ * 已存在但缺 timeout / 过短 / 缺 matcher / Windows 命令行过时 时就地修补。
  */
 export function ensureClaudeVisionHook(settings: Record<string, unknown>): { changed: boolean; detail: string } {
   const command = resolveHookCommandLine()
@@ -119,6 +120,10 @@ export function ensureClaudeVisionHook(settings: Record<string, unknown>): { cha
   const entries = Array.isArray(hooksRoot['UserPromptSubmit'])
     ? ([...hooksRoot['UserPromptSubmit']] as Array<Record<string, unknown>>)
     : []
+
+  // 检查 Claude Code 版本以决定是否需要 matcher 字段
+  const info = getClaudeCodeVersion()
+  const requireMatcher = info ? needsMatcherField(info.version) : true // 保守策略：默认加
 
   let changed = false
   let found = false
@@ -138,11 +143,18 @@ export function ensureClaudeVisionHook(settings: Record<string, unknown>): { cha
         }
       }
     }
+    // 确保 entry 级别的 matcher 字段存在（Claude Code >= 2.1.200 要求）
+    if (requireMatcher && typeof entry.matcher === 'undefined') {
+      entry.matcher = ''
+      changed = true
+    }
   }
   if (!found) {
-    entries.push({
+    const newEntry: Record<string, unknown> = {
       hooks: [{ type: 'command', command, timeout: CLAUDE_HOOK_TIMEOUT_SEC }],
-    })
+    }
+    if (requireMatcher) newEntry.matcher = ''
+    entries.push(newEntry)
     changed = true
   }
   if (changed) {

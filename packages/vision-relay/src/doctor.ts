@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
+import { getClaudeCodeVersion, MIN_MATCHER_VERSION, needsMatcherField } from './claude-version.js'
 import { configPath, loadConfig, validateConfig } from './config.js'
 import {
   claudeConfigDir,
@@ -123,6 +124,38 @@ export async function doctor(): Promise<void> {
   console.log(pc.bold('\n终端接线'))
   const detected = detectTerminals()
   if (!detected.length) console.log(pc.dim('  未检测到 claude / codex / opencode / cursor'))
+
+  // Claude Code 版本检测（仅当检测到 claude-code 时）
+  if (detected.includes('claude-code')) {
+    const info = getClaudeCodeVersion()
+    if (info) {
+      console.log(`  ${pc.cyan('Claude Code')} ${info.version}`)
+      if (!needsMatcherField(info.version)) {
+        console.log(`    ${pc.yellow('⚠')} 版本 < ${MIN_MATCHER_VERSION}，hook 可能不需要 matcher 字段`)
+      }
+    } else {
+      console.log(`  ${pc.yellow('⚠')} 检测到 Claude Code 配置，但无法获取版本（claude 命令不在 PATH 中）`)
+    }
+    // 检查 hook 配置中是否有 matcher 字段
+    try {
+      const settingsPath = claudeSettingsPath()
+      if (existsSync(settingsPath)) {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>
+        const hooksRoot = (settings.hooks ?? {}) as Record<string, unknown>
+        const entries = Array.isArray(hooksRoot['UserPromptSubmit'])
+          ? (hooksRoot['UserPromptSubmit'] as Array<Record<string, unknown>>)
+          : []
+        for (const entry of entries) {
+          const list = Array.isArray(entry.hooks) ? (entry.hooks as Array<Record<string, unknown>>) : []
+          const hasVisionRelay = list.some((h) => typeof h.command === 'string' && h.command.includes('vision-relay'))
+          if (hasVisionRelay && typeof entry.matcher === 'undefined') {
+            console.log(`    ${pc.yellow('⚠')} hook 缺少 matcher 字段 — 运行 vision-relay setup 修复`)
+          }
+        }
+      }
+    } catch {}
+  }
+
   for (const t of detected) {
     const w = wiring(t)
     check(TERMINAL_LABELS[t], w.ok, w.ok ? '主通道已接线' : '运行 vision-relay setup')
