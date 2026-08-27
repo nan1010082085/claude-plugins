@@ -155,11 +155,40 @@ async function handleRequest(
       res.end(JSON.stringify({ error: { message: '对话接口请求体必须是合法 JSON' } }))
       return
     }
+
+    // 诊断：记录请求中的 content block 类型
+    if (process.env.VISION_RELAY_DEBUG) {
+      try {
+        const obj = parsed as Record<string, unknown>
+        const msgs = Array.isArray(obj.messages) ? obj.messages : []
+        const blockTypes: string[] = []
+        for (const msg of msgs) {
+          if (msg && typeof msg === 'object') {
+            const content = (msg as Record<string, unknown>).content
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                if (block && typeof block === 'object') {
+                  const b = block as Record<string, unknown>
+                  blockTypes.push(b.type as string || 'unknown')
+                  if (b.type === 'image' || b.type === 'image_url') {
+                    process.stderr.write(`[vision-relay DEBUG] 发现图片 block: type=${b.type}, keys=${JSON.stringify(Object.keys(b))}\n`)
+                  }
+                }
+              }
+            }
+          }
+        }
+        process.stderr.write(`[vision-relay DEBUG] ${pathname} content block types: ${JSON.stringify(blockTypes)}\n`)
+      } catch {}
+    }
+
     const { body, rewritten } = await rewriteRequestBody(ctx.config, parsed, ctx.cache)
     if (rewritten > 0) {
       process.stderr.write(
         `[vision-relay] ✓ 会话改写: 已将 ${rewritten} 张图转为文字并转发上游\n`,
       )
+    } else if (process.env.VISION_RELAY_DEBUG) {
+      process.stderr.write(`[vision-relay DEBUG] 未发现需要改写的图片块\n`)
     }
     forwardBody = Buffer.from(JSON.stringify(body), 'utf8')
   }

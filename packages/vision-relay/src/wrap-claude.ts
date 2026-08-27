@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pc from 'picocolors'
@@ -123,12 +123,23 @@ export function buildSessionSettingsOverride(proxyBaseUrl: string): string {
 }
 
 /**
- * 写入临时 settings 文件，供 `claude --settings <file>` 使用。
- * 不碰 ~/.claude/settings.json；调用方负责在退出后删除。
+ * 固定路径的会话 settings 文件。
+ * 使用固定路径而非临时目录，这样 Claude Code 只需信任一次，后续不再弹确认。
+ * 路径：~/.config/vision-relay/session-settings.json
+ */
+export function sessionSettingsPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || ''
+  return join(home, '.config', 'vision-relay', 'session-settings.json')
+}
+
+/**
+ * 写入会话 settings 文件，供 `claude --settings <file>` 使用。
+ * 固定路径，覆盖写入；Claude Code 退出后保留（信任记忆依赖路径不变）。
  */
 export function writeSessionSettingsFile(proxyBaseUrl: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'vr-claude-'))
-  const file = join(dir, 'settings.json')
+  const file = sessionSettingsPath()
+  const dir = join(file, '..')
+  mkdirSync(dir, { recursive: true })
   writeFileSync(file, `${buildSessionSettingsOverride(proxyBaseUrl)}\n`, 'utf8')
   return file
 }
@@ -185,7 +196,9 @@ function resolveClaudeBin(): { command: string; useShell: boolean } {
 
 /**
  * 启动会话改写并拉起 Claude Code。
- * - 不写 ~/.claude/settings.json（临时 --settings 文件）
+ * - 使用固定路径 --settings 文件覆盖 ANTHROPIC_BASE_URL → 本机代理
+ * - 固定路径只需信任一次（Claude Code 记住后不再弹确认）
+ * - 同时设置环境变量（双保险）
  * - 不改模型名 / token / cc-switch 磁盘配置
  * - 出站经本机改写 → 原上游
  */
@@ -203,21 +216,24 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   const { upstream, source } = resolveClaudeUpstream()
   const proxy = await startSessionProxy({ config, upstreamBaseUrl: upstream })
 
-  // 只通过环境变量传递 ANTHROPIC_BASE_URL，不使用 --settings 文件。
-  // --settings 文件会触发 Claude Code 的 security consent dialog（每次临时路径不同，无法记住信任）。
-  // 环境变量方式等效且不会弹出确认对话框。
+  // 使用固定路径 --settings 文件覆盖 ANTHROPIC_BASE_URL。
+  // 环境变量会被 Claude Code settings.json 的 env 段覆盖，所以必须用 --settings 强制覆盖。
+  // 固定路径只需信任一次，后续启动不再弹确认对话框。
+  const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
   console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
+  console.error(pc.dim(`settings 覆盖: ${settingsFile}`))
   console.error('')
 
   const { command: bin, useShell } = resolveClaudeBin()
+  const settingsArgs = buildClaudeArgv(settingsFile, claudeArgs)
   const childEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxy.baseUrl,
   }
 
   const exitCode = await new Promise<number>((resolve) => {
-    const child = spawn(bin, claudeArgs, {
+    const child = spawn(bin, settingsArgs, {
       env: childEnv,
       stdio: 'inherit',
       shell: useShell,

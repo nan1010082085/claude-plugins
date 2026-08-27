@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**
-当前版本：**0.12.6**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.12.7**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。
 
@@ -188,7 +188,8 @@ vision-relay claude          # 可跟原有参数，如 -c
 
 | 版本 | 变更 |
 |------|------|
-| **0.12.5** | 跨会话内联图片搜索：image-cache 和 transcript 均支持全局回退 |
+| **0.12.7** | 修复 `vr claude` 代理被 settings.json env 覆盖导致图片未剥离的问题：改用固定路径 `--settings` 文件 |
+| 0.12.5 | 跨会话内联图片搜索：image-cache 和 transcript 均支持全局回退 |
 | 0.12.4 | Windows spawn .cmd ENOENT 修复 |
 | 0.12.3 | Windows spawn 修复 + `vr` 别名 |
 | 0.12.2 | 移除 `--settings` 避免启动信任对话框 |
