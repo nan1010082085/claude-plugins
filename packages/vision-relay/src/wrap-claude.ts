@@ -167,16 +167,15 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   const { config } = loadConfig()
   const { upstream, source } = resolveClaudeUpstream()
   const proxy = await startSessionProxy({ config, upstreamBaseUrl: upstream })
-  const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
 
+  // 只通过环境变量传递 ANTHROPIC_BASE_URL，不使用 --settings 文件。
+  // --settings 文件会触发 Claude Code 的 security consent dialog（每次临时路径不同，无法记住信任）。
+  // 环境变量方式等效且不会弹出确认对话框。
   console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
-  console.error(pc.dim(`临时 --settings 文件（不改用户 settings）: ${settingsFile}`))
-  console.error(pc.dim('退出后自动删除临时文件；cc-switch / settings 不变'))
   console.error('')
 
   const bin = process.env.VISION_RELAY_CLAUDE_BIN || 'claude'
-  const argv = buildClaudeArgv(settingsFile, claudeArgs)
   const childEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: proxy.baseUrl,
@@ -184,14 +183,13 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
 
   const exitCode = await new Promise<number>((resolve) => {
     // Windows 上 shell:true 会拆坏内联 JSON；现已改用文件路径，仍可用 shell 解析 PATH 里的 .cmd
-    const child = spawn(bin, argv, {
+    const child = spawn(bin, claudeArgs, {
       env: childEnv,
       stdio: 'inherit',
       shell: isWindows(),
       windowsHide: true,
     })
     const shutdown = async (code: number) => {
-      cleanupSettingsFile(settingsFile)
       try {
         await proxy.close()
       } catch {}
