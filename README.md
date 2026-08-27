@@ -6,8 +6,8 @@
 
 | 插件 | 功能 | 版本 |
 |------|------|------|
-| [vision-relay](packages/vision-relay) | 为无视觉能力的编码模型中转图片理解（命令优先 `describe` + MCP + hook） | [![npm](https://img.shields.io/npm/v/vision-relay)](https://www.npmjs.com/package/vision-relay) |
-| [commit-flow](packages/commit-flow) | 对齐 Cursor：Branch / Commit / Push / PR（详细 Conventional Commits） | [![npm](https://img.shields.io/npm/v/claude-commit-flow)](https://www.npmjs.com/package/claude-commit-flow) |
+| [vision-relay](packages/vision-relay) | 为无视觉能力的编码模型中转图片理解（命令优先 `describe` + MCP + hook） | 0.12.12 |
+| [commit-flow](packages/commit-flow) | 对齐 Cursor：Branch / Commit / Push / PR（详细 Conventional Commits） | 0.2.1 |
 
 ## 安装
 
