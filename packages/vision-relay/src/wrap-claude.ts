@@ -150,8 +150,12 @@ function cleanupSettingsFile(file: string): void {
 
 /**
  * Windows 上解析 claude 可执行文件路径。
- * nvm4w 等环境的 node_modules 路径含 '@'，shell:true 时 cmd.exe 处理不了。
- * 优先用 `where claude` 找到真实路径后直接 spawn（不走 shell）。
+ * nvm4w 等环境会同时生成 claude（bash 脚本）和 claude.cmd（batch 脚本）。
+ * - .exe 可直接 spawn（shell:false）
+ * - .cmd/.bat 需要 shell:true（cmd.exe 解释执行）
+ * - 无扩展名的 bash 脚本在 Windows 上也无法直接 spawn，需要 shell:true
+ *
+ * 优先找 claude.cmd（npm 全局安装的标准产物），避免 shell 对 '@' 等特殊字符的处理问题。
  */
 function resolveClaudeBin(): { command: string; useShell: boolean } {
   const envBin = process.env.VISION_RELAY_CLAUDE_BIN
@@ -159,12 +163,19 @@ function resolveClaudeBin(): { command: string; useShell: boolean } {
 
   if (!isWindows()) return { command: 'claude', useShell: false }
 
-  // Windows: 用 `where` 找 claude 的真实路径，避免 shell 对 '@' 等特殊字符的处理问题
+  // Windows: 用 `where` 找 claude 的真实路径
+  // 优先 claude.cmd（nvm4w/npm 全局安装的标准 wrapper），再找 claude
   try {
-    const r = spawnSync('where', ['claude'], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
-    if (r.status === 0 && r.stdout) {
-      const first = r.stdout.trim().split(/\r?\n/)[0]!.trim()
-      if (first && existsSync(first)) return { command: first, useShell: false }
+    for (const target of ['claude.cmd', 'claude']) {
+      const r = spawnSync('where', [target], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
+      if (r.status === 0 && r.stdout) {
+        const first = r.stdout.trim().split(/\r?\n/)[0]!.trim()
+        if (first && existsSync(first)) {
+          // .cmd/.bat 需要 shell 执行；.exe 可直接 spawn
+          const needsShell = /\.(cmd|bat)$/i.test(first)
+          return { command: first, useShell: needsShell }
+        }
+      }
     }
   } catch {}
 
