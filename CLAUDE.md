@@ -33,10 +33,11 @@ packages/<plugin>/
 
 1. 修改 `packages/<plugin>/` 代码
 2. 更新 `package.json` 的 `version`（semver：patch=修复、minor=新功能、major=破坏性变更）
-3. 发布到 npm：`cd packages/<plugin> && npm publish`
-4. 同步推送 GitHub
-5. 验证：`npx <package> --version` 或安装到目标环境跑通
-6. **有代码/文档改动后即 `ima-upload`**（不必等 commit；简述版本与改动）
+3. **先更新 README 中的版本号**，再 `npm publish`（npm 打包的是发布时刻的文件，顺序反了会导致 npm 上 README 显示旧版本）
+4. 发布到 npm：`cd packages/<plugin> && npm publish`
+5. 同步推送 GitHub
+6. 验证：`npx <package> --version` 或安装到目标环境跑通
+7. **有代码/文档改动后即 `ima-upload`**（不必等 commit；简述版本与改动）
 
 ## 测试要求
 
