@@ -85,10 +85,25 @@ function extractInlineImages(parsed: Record<string, unknown>): ImageInput[] {
 function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = ''
+    let resolved = false
+
+    const done = () => {
+      if (!resolved) {
+        resolved = true
+        resolve(data)
+      }
+    }
+
     process.stdin.setEncoding('utf8')
     process.stdin.on('data', (c) => (data += c))
-    process.stdin.on('end', () => resolve(data))
-    process.stdin.on('error', () => resolve(data))
+    process.stdin.on('end', done)
+    process.stdin.on('error', done)
+
+    // 如果 stdin 已经结束（readableEnded），立即 resolve
+    // 这处理了 Claude Code 在调用 hook 前就关闭 stdin 的情况
+    if (process.stdin.readableEnded || process.stdin.destroyed) {
+      done()
+    }
   })
 }
 
