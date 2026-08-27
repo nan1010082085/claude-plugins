@@ -66,9 +66,15 @@ describe('rewriteRequestBody', () => {
     const { body: out, rewritten } = await rewriteRequestBody(cfg, body, new Map())
     expect(rewritten).toBeGreaterThanOrEqual(1)
     const content = (out as { messages: { content: unknown[] }[] }).messages[0]!.content
+    // 图片块被剥离，用户消息不再包含 image 块
     expect(content.some((b) => (b as { type?: string }).type === 'image')).toBe(false)
-    const text = content.find((b) => (b as { type?: string }).type === 'text' && String((b as { text?: string }).text).startsWith('[vision-relay]'))
-    expect(text).toBeTruthy()
+    // 用户消息中不再注入文本块（避免 UI 回显）
+    expect(content.some((b) => (b as { type?: string }).type === 'text' && String((b as { text?: string }).text).startsWith('[vision-relay]'))).toBe(false)
+    // 图片描述注入到 system 字段
+    const system = (out as { system?: unknown }).system
+    expect(typeof system).toBe('string')
+    expect(String(system)).toContain('[vision-relay]')
+    expect(String(system)).toContain('图片 1')
   })
 
   it('无法解析的 image 块也替换为占位', async () => {
@@ -84,8 +90,11 @@ describe('rewriteRequestBody', () => {
     }
     const { body: out } = await rewriteRequestBody(cfg, body, new Map())
     const content = (out as { messages: { content: unknown[] }[] }).messages[0]!.content
-    expect(content).toHaveLength(1)
-    expect((content[0] as { type: string }).type).toBe('text')
-    expect(String((content[0] as { text: string }).text)).toContain('[vision-relay]')
+    // 无法解析的图片块被剥离，用户消息为空数组
+    expect(content).toHaveLength(0)
+    // 占位描述注入到 system 字段
+    const system = (out as { system?: unknown }).system
+    expect(typeof system).toBe('string')
+    expect(String(system)).toContain('[vision-relay]')
   })
 })

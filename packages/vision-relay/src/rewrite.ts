@@ -120,18 +120,15 @@ async function describeBlock(
   }
 }
 
-function textBlock(text: string): Record<string, unknown> {
-  return {
-    type: 'text',
-    text: `[vision-relay] ✓ 已将粘贴图转为文字描述（用户侧可见终端日志）\n${text}`,
-  }
-}
-
-/** 递归改写 content（string | block[]），图片块一律 → 文字块 */
-export async function rewriteContent(
+/**
+ * 剥离 content 中的图片块，收集描述到 collected 数组。
+ * 返回仅含文本部分的 content（图片块被移除，不替换为文本块）。
+ */
+async function stripImageBlocks(
   cfg: Config,
   content: unknown,
   cache: DescCache,
+  collected: string[],
 ): Promise<unknown> {
   if (typeof content === 'string' || content == null) return content
   if (!Array.isArray(content)) return content
@@ -145,13 +142,13 @@ export async function rewriteContent(
     const block = raw as Record<string, unknown>
     if (isImageLikeBlock(block)) {
       const desc = await describeBlock(cfg, block, cache)
-      out.push(textBlock(desc))
-      continue
+      collected.push(desc)
+      continue // 剥离，不放回
     }
     if (block.type === 'tool_result') {
       out.push({
         ...block,
-        content: await rewriteContent(cfg, block.content, cache),
+        content: await stripImageBlocks(cfg, block.content, cache, collected),
       })
       continue
     }
@@ -161,8 +158,8 @@ export async function rewriteContent(
 }
 
 /**
- * 改写 Anthropic /messages 或 OpenAI /chat/completions 请求体中的图片。
- * 无图时原样返回；有图时替换为文字（失败也替换占位，绝不放行原图）。
+ * 改写请求体：剥离用户消息中的图片块，将图片描述注入 system 字段。
+ * 用户消息保持原样（仅移除图片块），不注入文本块，避免 UI 回显。
  */
 export async function rewriteRequestBody(
   cfg: Config,
@@ -174,7 +171,7 @@ export async function rewriteRequestBody(
   const messages = obj.messages
   if (!Array.isArray(messages)) return { body, rewritten: 0 }
 
-  let rewritten = 0
+  const collected: string[] = []
   const nextMessages = []
   for (const msg of messages) {
     if (!msg || typeof msg !== 'object') {
@@ -182,20 +179,27 @@ export async function rewriteRequestBody(
       continue
     }
     const m = msg as Record<string, unknown>
-    const before = JSON.stringify(m.content)
-    const content = await rewriteContent(cfg, m.content, cache)
-    if (JSON.stringify(content) !== before && Array.isArray(content)) {
-      rewritten += content.filter(
-        (b) =>
-          b &&
-          typeof b === 'object' &&
-          (b as { type?: string; text?: string }).type === 'text' &&
-          String((b as { text?: string }).text ?? '').startsWith('[vision-relay]'),
-      ).length
-    }
+    const content = await stripImageBlocks(cfg, m.content, cache, collected)
     nextMessages.push({ ...m, content })
   }
-  return { body: { ...obj, messages: nextMessages }, rewritten }
+
+  if (collected.length === 0) return { body, rewritten: 0 }
+
+  // 将图片描述注入 system 字段，模型可见但 UI 不渲染
+  const descBlock =
+    `[vision-relay] 以下是用户消息中包含的图片描述（图片已从消息中剥离）:\n\n` +
+    collected.map((d, i) => `--- 图片 ${i + 1} ---\n${d}`).join('\n\n')
+
+  const existing = obj.system
+  if (typeof existing === 'string') {
+    obj.system = `${existing}\n\n${descBlock}`
+  } else if (Array.isArray(existing)) {
+    obj.system = [...existing, { type: 'text', text: descBlock }]
+  } else {
+    obj.system = descBlock
+  }
+
+  return { body: { ...obj, messages: nextMessages }, rewritten: collected.length }
 }
 
 /** 请求路径是否为需要改写的对话接口 */
