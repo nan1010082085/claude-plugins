@@ -1,9 +1,11 @@
 # vision-relay
 
-**为无视觉能力的编码模型中转图片理解。**  
-当前版本：**0.11.0**（[npm](https://www.npmjs.com/package/vision-relay)）
+**为无视觉能力的编码模型中转图片理解。**
+当前版本：**0.12.6**（[npm](https://www.npmjs.com/package/vision-relay)）
 
-编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。支持 Claude Code / Codex / opencode / Cursor。
+编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。
+
+支持 **Claude Code / Codex / opencode / Cursor**。
 
 ---
 
@@ -12,12 +14,12 @@
 ```bash
 npm install -g vision-relay
 vision-relay init          # 配置视觉模型（协议 / URL / Key / 模型名）
-vision-relay setup         # 接线（Windows 一键确认；写 hook/MCP/命令）
-vision-relay setup --all   # 不询问，配置已检测终端
-vision-relay doctor        # 检查配置与接线
+vision-relay setup         # 接线（一键确认；写 hook / MCP / 命令）
+vision-relay setup --all   # 不询问，配置所有已检测终端
+vision-relay doctor        # 检查配置与接线状态
 ```
 
-Claude Code 也可：
+Claude Code 也可通过插件市场安装：
 
 ```
 /plugin marketplace add nan1010082085/claude-plugins
@@ -54,8 +56,8 @@ Claude Code 也可：
 
 Agent 必须：
 
-1. 跑 `vision-relay describe "<图>" -q "<问题>"`（或 MCP `vision_describe`）  
-2. **只根据返回文字**回答 / 改代码，禁止猜图  
+1. 跑 `vision-relay describe "<图>" -q "<问题>"`（或 MCP `vision_describe`）
+2. **只根据返回文字**回答 / 改代码，禁止猜图
 
 Codex 桌面端自定义 prompt 名可能是 `/prompts:vision`，参数写法相同。
 
@@ -80,12 +82,12 @@ vision-relay describe "#1" -q "图片内容"
 vision-relay claude          # 可跟原有参数，如 -c
 ```
 
-- 用临时 **`--settings <文件>`** 覆盖 `ANTHROPIC_BASE_URL` → 本机改写（避免 Windows 内联 JSON 报 Invalid JSON；不写用户 settings）  
-- **不写** `~/.claude/settings.json`，不改 cc-switch 磁盘配置  
-- 有图：视觉模型（`~/.config/vision-relay`）识别 → 文字再转发编码上游  
-- 无图：原样透传编码上游  
-- Hook / MCP / 记忆等本地能力不受影响  
-- 退出 Claude 后改写停止  
+- 用环境变量 `ANTHROPIC_BASE_URL` 覆盖为本机改写代理（不写 `~/.claude/settings.json`）
+- **不弹安全确认对话框**（v0.12.2+ 移除 `--settings` 方式）
+- 有图：视觉模型识别 → 文字再转发编码上游
+- 无图：原样透传编码上游
+- Hook / MCP / 记忆等本地能力不受影响
+- 退出 Claude 后改写停止
 
 `vision-relay doctor` 里有「会话包装」检查项。
 
@@ -116,7 +118,8 @@ vision-relay claude          # 可跟原有参数，如 -c
 | `test` | 1×1 测试图验证视觉 API |
 | `doctor` | 配置、接线、会话包装诊断 |
 
-斜杠：`/vision` · `/vision-config` · `/vision-doctor`
+斜杠命令：`/vision` · `/vision-config` · `/vision-doctor`
+别名：`vr`（等同 `vision-relay`）
 
 ---
 
@@ -134,6 +137,15 @@ vision-relay claude          # 可跟原有参数，如 -c
 ```
 
 视觉与编码是两条线：视觉读 `~/.config/vision-relay/config.json`；编码仍走你原来的上游（如 cc-switch / Ark）。
+
+### 内联图片查找流程（Hook）
+
+当 Claude Code 的 hook 收到 `[Image #N]` 引用时，按以下顺序查找：
+
+1. **image-cache 文件**：`~/.claude/image-cache/<session>/<N>.png`（最快，但 Claude 常清理）
+2. **跨 session 缓存**：扫描所有 session 的 image-cache 目录（v0.12.5+）
+3. **当前会话 transcript**：从会话 jsonl 中提取 base64 图片数据
+4. **全局 transcript 搜索**：扫描所有会话的 transcript（v0.12.5+，支持跨会话引用历史图片）
 
 ---
 
@@ -169,8 +181,24 @@ vision-relay claude          # 可跟原有参数，如 -c
 |------|------|
 | Codex 对话贴图 | 客户端常直接拒，请用 `/vision` + 路径/clipboard |
 | 无包装时 Claude 贴图 | 仍会 400；请用 `/vision` 或 `vision-relay claude` |
-| hook | 可辅助路径 / image-cache；**不能单独**破硬 400 |
+| hook | 可辅助路径 / image-cache / transcript；**不能单独**破硬 400 |
 | 常驻代理 | 已移除；只有会话包装，退出即停 |
+
+## 更新日志
+
+| 版本 | 变更 |
+|------|------|
+| **0.12.5** | 跨会话内联图片搜索：image-cache 和 transcript 均支持全局回退 |
+| 0.12.4 | Windows spawn .cmd ENOENT 修复 |
+| 0.12.3 | Windows spawn 修复 + `vr` 别名 |
+| 0.12.2 | 移除 `--settings` 避免启动信任对话框 |
+| 0.12.1 | stdin 已关闭时 readStdin 不阻塞 |
+| 0.12.0 | Claude Code 版本检测 + hook matcher 自动修复 |
+| 0.11.0 | transcript 兜底读取粘贴图，hook 优先本地命令 |
+| 0.10.6 | 用户可见识别状态简报 |
+| 0.10.2 | 优化 /vision 与 MCP 图源解析 |
+| 0.10.1 | 会话包装粘贴改写（claude --settings） |
+| 0.9.0 | 命令优先两段式（describe + /vision） |
 
 ## 许可
 

@@ -439,7 +439,7 @@ export function loadPastedImageFromTranscript(
 }
 
 /** 列出 `~/.claude/projects` 下全部 transcript（按文件 mtime 新→旧） */
-function listTranscriptPaths(): string[] {
+export function listTranscriptPaths(): string[] {
   const root = join(claudeConfigDir(), 'projects')
   if (!existsSync(root)) return []
   const out: Array<{ p: string; m: number }> = []
@@ -479,33 +479,63 @@ export function loadRecentImageFromTranscripts(maxBytes: number, preferPath?: st
 
 /**
  * 解析 Claude Code `[Image #N]` 对应的落盘路径。
- * 有 sessionId 用该目录；否则取最近更新的会话目录。
+ * 优先查指定 sessionId 目录；找不到则扫全部 session 目录（按 mtime 新→旧），
+ * 以支持跨会话引用历史图片的场景。
+ * @param cacheRoot 可选覆盖 image-cache 根目录（供测试注入）
  */
-export function resolveClaudePastedImagePath(n: number, sessionId?: string): string | null {
-  const cacheDir = claudeImageCacheRoot()
-  const candidates: string[] = []
-  if (sessionId) candidates.push(join(cacheDir, sessionId))
-  else {
+export function resolveClaudePastedImagePath(n: number, sessionId?: string, cacheRoot?: string): string | null {
+  const cacheDir = cacheRoot ?? claudeImageCacheRoot()
+  const fileNameRe = new RegExp(`^${n}\\.[a-z0-9]+$`, 'i')
+
+  // 优先查指定 sessionId
+  if (sessionId) {
+    const dir = join(cacheDir, sessionId)
+    try {
+      const file = readdirSync(dir).find((f) => fileNameRe.test(f))
+      if (file) return join(dir, file)
+    } catch {}
+  }
+
+  // 扫全部 session 目录（按 mtime 新→旧），找到第一个匹配即返回
+  try {
+    const sessions = readdirSync(cacheDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && (!sessionId || e.name !== sessionId))
+      .map((e) => ({ dir: join(cacheDir, e.name), mtime: statSync(join(cacheDir, e.name)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime)
+    for (const s of sessions) {
+      try {
+        const file = readdirSync(s.dir).find((f) => fileNameRe.test(f))
+        if (file) return join(s.dir, file)
+      } catch {}
+    }
+  } catch {}
+
+  // 无 sessionId 时的兜底：取最近更新的目录
+  if (!sessionId) {
     try {
       const latest = readdirSync(cacheDir, { withFileTypes: true })
         .filter((e) => e.isDirectory())
         .map((e) => ({ dir: join(cacheDir, e.name), mtime: statSync(join(cacheDir, e.name)).mtimeMs }))
         .sort((a, b) => b.mtime - a.mtime)[0]
-      if (latest) candidates.push(latest.dir)
+      if (latest) {
+        try {
+          const file = readdirSync(latest.dir).find((f) => fileNameRe.test(f))
+          if (file) return join(latest.dir, file)
+        } catch {}
+      }
     } catch {}
   }
-  for (const dir of candidates) {
-    try {
-      const file = readdirSync(dir).find((f) => /^\d+\.[a-z0-9]+$/i.test(f) && f.startsWith(`${n}.`))
-      if (file) return join(dir, file)
-    } catch {}
-  }
+
   return null
 }
 
 /**
  * 读取粘贴图为 ImageInput。
- * 顺序：image-cache → transcript jsonl（Claude 常清理 cache，但 transcript 仍含 base64）。
+ * 顺序：image-cache → 指定 transcript → 全局 transcript 搜索。
+ * Claude 常清理 cache；跨会话引用历史图片时指定 transcript 也找不到，
+ * 所以最后兜底扫描全部 transcript（耗时可接受，仅在前两步都 miss 时触发）。
+ * @param allTranscripts 可选覆盖全局 transcript 列表（供测试注入）
+ * @param cacheRoot 可选覆盖 image-cache 根目录（供测试注入）
  */
 export function loadClaudePastedImage(
   n: number,
@@ -513,8 +543,11 @@ export function loadClaudePastedImage(
   sessionId?: string,
   transcriptPath?: string,
   cwd?: string,
+  allTranscripts?: string[],
+  cacheRoot?: string,
 ): ImageInput | null {
-  const p = resolveClaudePastedImagePath(n, sessionId)
+  // 1. image-cache 文件（最快，但常被 Claude 清理）
+  const p = resolveClaudePastedImagePath(n, sessionId, cacheRoot)
   if (p) {
     try {
       const size = statSync(p).size
@@ -527,11 +560,19 @@ export function loadClaudePastedImage(
       }
     } catch {}
   }
+  // 2. 指定 transcript（当前会话）
   const candidates = [
     transcriptPath,
     sessionId && cwd ? claudeProjectTranscriptPath(sessionId, cwd) : undefined,
   ].filter((x): x is string => typeof x === 'string' && x.length > 0)
   for (const tp of candidates) {
+    const fromTranscript = loadPastedImageFromTranscript(tp, n, maxBytes)
+    if (fromTranscript) return fromTranscript
+  }
+  // 3. 全局搜索：跨会话引用历史图片（如新会话中输入 "[Image #1]" 引用旧会话图片）
+  const transcripts = allTranscripts ?? listTranscriptPaths()
+  for (const tp of transcripts) {
+    if (candidates.includes(tp)) continue // 已查过，跳过
     const fromTranscript = loadPastedImageFromTranscript(tp, n, maxBytes)
     if (fromTranscript) return fromTranscript
   }
