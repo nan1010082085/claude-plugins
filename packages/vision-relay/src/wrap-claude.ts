@@ -198,6 +198,7 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
   console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
+  console.error(pc.dim(`视觉模型: ${config.vision.model} @ ${config.vision.baseUrl}（${config.vision.type}）`))
   console.error(pc.dim(`settings 覆盖: ${settingsFile}`))
   console.error('')
 
