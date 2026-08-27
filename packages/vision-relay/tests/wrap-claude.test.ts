@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  buildClaudeArgv,
   isLoopbackBaseUrl,
   resolveClaudeUpstream,
+  sessionSettingsPath,
+  writeSessionSettingsFile,
 } from '../src/wrap-claude.js'
 
 const prevHome = process.env.HOME
@@ -57,5 +60,15 @@ describe('resolveClaudeUpstream', () => {
     )
     process.env.HOME = home
     expect(() => resolveClaudeUpstream({})).toThrow(/本机/)
+  })
+
+  it('writeSessionSettingsFile 写入固定路径，buildClaudeArgv 使用 --settings', () => {
+    const file = writeSessionSettingsFile('http://127.0.0.1:9999')
+    expect(file).toBe(sessionSettingsPath())
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:9999' },
+    })
+    const argv = buildClaudeArgv(file, ['-c'])
+    expect(argv).toEqual(['--settings', file, '-c'])
   })
 })

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import pc from 'picocolors'
 import { loadConfig, validateConfig } from './config.js'
@@ -107,6 +107,37 @@ export function checkClaudeWrapReady(env: NodeJS.ProcessEnv = process.env): {
 }
 
 /**
+ * 固定路径的会话 settings 文件。
+ * 路径：~/.config/vision-relay/session-settings.json
+ * 使用固定路径：Claude Code 只需信任一次，后续启动不再弹确认。
+ * 不碰 ~/.claude/settings.json，与 cc-switch 互不干扰。
+ */
+export function sessionSettingsPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || ''
+  return join(home, '.config', 'vision-relay', 'session-settings.json')
+}
+
+/**
+ * 写入固定路径的会话 settings 文件。
+ * Claude Code 首次加载时会弹信任确认，选 Trust 后不再提示。
+ */
+export function writeSessionSettingsFile(proxyBaseUrl: string): string {
+  const file = sessionSettingsPath()
+  mkdirSync(join(file, '..'), { recursive: true })
+  writeFileSync(
+    file,
+    JSON.stringify({ env: { ANTHROPIC_BASE_URL: proxyBaseUrl } }, null, 2) + '\n',
+    'utf8',
+  )
+  return file
+}
+
+/** 组装启动参数：`--settings <文件>` + 用户参数 */
+export function buildClaudeArgv(settingsFile: string, userArgs: string[]): string[] {
+  return ['--settings', settingsFile, ...userArgs]
+}
+
+/**
  * Windows 上解析 claude 可执行文件路径。
  * nvm4w 等环境会同时生成 claude（bash 脚本）和 claude.cmd（batch 脚本）。
  * - .exe 可直接 spawn（shell:false）
@@ -142,57 +173,10 @@ function resolveClaudeBin(): { command: string; useShell: boolean } {
 }
 
 /**
- * 临时替换 settings.json 中的 ANTHROPIC_BASE_URL。
- * 返回恢复函数（无论成功失败都必须调用）。
- * 如果 settings.json 无 env 段或无 ANTHROPIC_BASE_URL，则追加。
- */
-function patchSettingsBaseUrl(proxyBaseUrl: string): () => void {
-  const settingsPath = claudeSettingsPath()
-  let original: string | undefined
-  let raw: string
-
-  try {
-    raw = readFileSync(settingsPath, 'utf8')
-  } catch {
-    // settings.json 不存在，写一个新的
-    writeFileSync(settingsPath, JSON.stringify({ env: { ANTHROPIC_BASE_URL: proxyBaseUrl } }, null, 2) + '\n', 'utf8')
-    return () => {
-      try { writeFileSync(settingsPath, '{}\n', 'utf8') } catch {}
-    }
-  }
-
-  const settings = JSON.parse(raw) as Record<string, unknown>
-  const env = (settings.env ?? {}) as Record<string, string>
-  original = env.ANTHROPIC_BASE_URL
-  env.ANTHROPIC_BASE_URL = proxyBaseUrl
-  settings.env = env
-
-  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8')
-
-  return () => {
-    try {
-      const cur = JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>
-      const curEnv = (cur.env ?? {}) as Record<string, string>
-      if (original !== undefined) {
-        curEnv.ANTHROPIC_BASE_URL = original
-      } else {
-        delete curEnv.ANTHROPIC_BASE_URL
-      }
-      if (Object.keys(curEnv).length === 0) {
-        delete cur.env
-      } else {
-        cur.env = curEnv
-      }
-      writeFileSync(settingsPath, JSON.stringify(cur, null, 2) + '\n', 'utf8')
-    } catch {}
-  }
-}
-
-/**
  * 启动会话改写并拉起 Claude Code。
- * - 临时替换 settings.json 中的 ANTHROPIC_BASE_URL → 本机代理
- * - Claude Code 退出后恢复原值
- * - 无需 --settings，无信任弹窗
+ * - 用固定路径 --settings 文件覆盖 ANTHROPIC_BASE_URL → 本机代理
+ * - 不碰 ~/.claude/settings.json，与 cc-switch 互不干扰
+ * - 固定路径只需信任一次（首次弹确认，后续不再提示）
  * - 不改模型名 / token / cc-switch 磁盘配置
  * - 出站经本机改写 → 原上游
  */
@@ -210,25 +194,24 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
   const { upstream, source } = resolveClaudeUpstream()
   const proxy = await startSessionProxy({ config, upstreamBaseUrl: upstream })
 
-  // 临时替换 settings.json 的 ANTHROPIC_BASE_URL → 代理地址
-  // Claude Code 的 settings.json env 会覆盖进程环境变量，所以必须直接改 settings.json
-  const restoreSettings = patchSettingsBaseUrl(proxy.baseUrl)
-
+  // 写固定路径 --settings 文件，不碰 ~/.claude/settings.json
+  const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
   console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
   console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
+  console.error(pc.dim(`settings 覆盖: ${settingsFile}`))
   console.error('')
 
   const { command: bin, useShell } = resolveClaudeBin()
+  const settingsArgs = buildClaudeArgv(settingsFile, claudeArgs)
 
   const exitCode = await new Promise<number>((resolve) => {
-    const child = spawn(bin, claudeArgs, {
+    const child = spawn(bin, settingsArgs, {
       env: { ...process.env, ANTHROPIC_BASE_URL: proxy.baseUrl },
       stdio: 'inherit',
       shell: useShell,
       windowsHide: true,
     })
     const shutdown = async (code: number) => {
-      restoreSettings()
       try {
         await proxy.close()
       } catch {}
