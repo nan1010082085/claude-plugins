@@ -183,9 +183,9 @@ async function handleRequest(
     }
 
     const { body, rewritten } = await rewriteRequestBody(ctx.config, parsed, ctx.cache)
-    if (rewritten > 0 && process.env.VISION_RELAY_DEBUG) {
+    if (rewritten > 0) {
       process.stderr.write(
-        `[vision-relay DEBUG] 会话改写: 已将 ${rewritten} 张图转为文字并转发上游\n`,
+        `[vision-relay] ✓ 会话改写: 已将 ${rewritten} 张图转为文字并转发上游\n`,
       )
     } else if (process.env.VISION_RELAY_DEBUG) {
       process.stderr.write(`[vision-relay DEBUG] 未发现需要改写的图片块\n`)
