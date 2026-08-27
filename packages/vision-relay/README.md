@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**
-当前版本：**0.12.7**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.12.8**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。
 
@@ -82,8 +82,8 @@ vision-relay describe "#1" -q "图片内容"
 vision-relay claude          # 可跟原有参数，如 -c
 ```
 
-- 用环境变量 `ANTHROPIC_BASE_URL` 覆盖为本机改写代理（不写 `~/.claude/settings.json`）
-- **不弹安全确认对话框**（v0.12.2+ 移除 `--settings` 方式）
+- 临时替换 `~/.claude/settings.json` 中的 `ANTHROPIC_BASE_URL` → 本机代理（退出后自动恢复）
+- **零弹窗**：不使用 `--settings`，不触发信任确认对话框
 - 有图：视觉模型识别 → 文字再转发编码上游
 - 无图：原样透传编码上游
 - Hook / MCP / 记忆等本地能力不受影响
@@ -188,7 +188,7 @@ vision-relay claude          # 可跟原有参数，如 -c
 
 | 版本 | 变更 |
 |------|------|
-| **0.12.7** | 修复 `vr claude` 代理被 settings.json env 覆盖导致图片未剥离的问题：改用固定路径 `--settings` 文件 |
+| **0.12.8** | 修复 `vr claude` 代理被绕过：直接临时替换 settings.json 的 ANTHROPIC_BASE_URL，无需 --settings，无信任弹窗 |
 | 0.12.5 | 跨会话内联图片搜索：image-cache 和 transcript 均支持全局回退 |
 | 0.12.4 | Windows spawn .cmd ENOENT 修复 |
 | 0.12.3 | Windows spawn 修复 + `vr` 别名 |

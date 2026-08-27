@@ -3,11 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  buildClaudeArgv,
-  buildSessionSettingsOverride,
   isLoopbackBaseUrl,
   resolveClaudeUpstream,
-  writeSessionSettingsFile,
 } from '../src/wrap-claude.js'
 
 const prevHome = process.env.HOME
@@ -60,17 +57,5 @@ describe('resolveClaudeUpstream', () => {
     )
     process.env.HOME = home
     expect(() => resolveClaudeUpstream({})).toThrow(/本机/)
-  })
-
-  it('buildClaudeArgv 使用 settings 文件路径（避免 Windows 内联 JSON 被拆坏）', () => {
-    const file = writeSessionSettingsFile('http://127.0.0.1:9')
-    const argv = buildClaudeArgv(file, ['-c'])
-    expect(argv[0]).toBe('--settings')
-    expect(argv[1]).toBe(file)
-    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
-      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:9' },
-    })
-    expect(argv.slice(2)).toEqual(['-c'])
-    expect(buildSessionSettingsOverride('http://127.0.0.1:9')).toContain('127.0.0.1:9')
   })
 })
