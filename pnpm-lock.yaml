@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    dependencies:
+      vision-relay:
+        specifier: ^0.12.1
+        version: 0.12.1
 
   packages/commit-flow:
     dependencies:
@@ -1092,6 +1096,11 @@ packages:
   utif2@4.1.0:
     resolution: {integrity: sha512-+oknB9FHrJ7oW7A2WZYajOcv4FcDR4CfoGB0dPNfxbi4GO05RRnFmt5oa23+9w32EanrYcSJWspUiJkLMs+37w==}
 
+  vision-relay@0.12.1:
+    resolution: {integrity: sha512-K92bp1WVkgewBSAx/AeTmdWwNV0nSEpmAFliW5eGoYbmK6qcM/KjUaABh6QFyEdQ4/byzuJEoXVxr5KsNZV4jQ==}
+    engines: {node: '>=20'}
+    hasBin: true
+
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
     engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
@@ -2155,6 +2164,15 @@ snapshots:
   utif2@4.1.0:
     dependencies:
       pako: 1.0.11
+
+  vision-relay@0.12.1:
+    dependencies:
+      '@clack/prompts': 0.11.0
+      commander: 14.0.3
+      jimp: 1.6.1
+      picocolors: 1.1.1
+    transitivePeerDependencies:
+      - supports-color
 
   vite-node@3.2.4(@types/node@24.13.3)(tsx@4.23.12):
     dependencies:
