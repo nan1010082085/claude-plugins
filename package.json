@@ -12,6 +12,6 @@
     "publish:commit-flow": "./scripts/publish-sync.sh commit-flow"
   },
   "dependencies": {
-    "vision-relay": "^0.12.1"
+    "vision-relay": "^0.12.16"
   }
 }

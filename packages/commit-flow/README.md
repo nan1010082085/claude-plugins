@@ -2,6 +2,8 @@
 
 Claude Code 快捷 Git，对齐 Cursor **Commit & Push** 下拉：建分支、Commit、Push、开 PR；消息含详细 why/impact；Push/PR 需确认。
 
+当前版本：**0.2.2**（[npm](https://www.npmjs.com/package/claude-commit-flow)）
+
 ## 安装
 
 ### Claude Code
