@@ -1,6 +1,6 @@
 {
   "name": "claude-commit-flow",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Claude Code 快捷 Git（对齐 Cursor）：Branch / Commit / Push / PR，详细 why/impact",
   "type": "module",
   "license": "MIT",

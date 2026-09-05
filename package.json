@@ -7,7 +7,9 @@
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "dev": "pnpm -r --parallel run dev"
+    "dev": "pnpm -r --parallel run dev",
+    "publish:vision-relay": "./scripts/publish-sync.sh vision-relay",
+    "publish:commit-flow": "./scripts/publish-sync.sh commit-flow"
   },
   "dependencies": {
     "vision-relay": "^0.12.1"
