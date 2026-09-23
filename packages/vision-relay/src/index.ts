@@ -7,7 +7,7 @@ import { describeCli } from './describe-cli.js'
 import { hookMain } from './hook.js'
 import { runMcpServer } from './mcp.js'
 import { setupAllDetected, setupInteractive } from './setup.js'
-import { initWizard, testConnection } from './tui.js'
+import { initWizard, swapModelWizard, testConnection } from './tui.js'
 import { doctor } from './doctor.js'
 import { runClaudeWrapped } from './wrap-claude.js'
 
@@ -28,6 +28,11 @@ program
   .command('init')
   .description('问答式配置视觉模型（协议/URL/模型/密钥），可立即测试连接')
   .action(() => initWizard())
+
+program
+  .command('model')
+  .description('引导替换视觉模型（只换模型名 / 换供应商），每步回车可跳过保留现值')
+  .action(() => swapModelWizard())
 
 program
   .command('setup')
@@ -75,14 +80,18 @@ program
   .description(
     '会话级粘贴改写：临时本地改写后启动 Claude（不写 settings；退出即停）',
   )
+  .option('-q, --quiet', '静默模式：不输出启动诊断信息')
   .allowUnknownOption(true)
   .allowExcessArguments(true)
   .helpOption(false)
-  .action(async () => {
+  .action(async (opts: { quiet?: boolean }) => {
     const raw = process.argv
     const idx = raw.findIndex((a, i) => i > 1 && a === 'claude')
-    const passthrough = idx >= 0 ? raw.slice(idx + 1) : []
-    process.exitCode = await runClaudeWrapped(passthrough)
+    // 过滤掉 vision-relay 自己的选项，只传递给 Claude Code
+    const passthrough = idx >= 0
+      ? raw.slice(idx + 1).filter((a) => a !== '-q' && a !== '--quiet')
+      : []
+    process.exitCode = await runClaudeWrapped(passthrough, { quiet: opts.quiet })
   })
 
 program

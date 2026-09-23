@@ -172,6 +172,10 @@ function resolveClaudeBin(): { command: string; useShell: boolean } {
   return { command: 'claude', useShell: true }
 }
 
+export interface RunClaudeWrappedOptions {
+  quiet?: boolean
+}
+
 /**
  * 启动会话改写并拉起 Claude Code。
  * - 用固定路径 --settings 文件覆盖 ANTHROPIC_BASE_URL → 本机代理
@@ -180,7 +184,7 @@ function resolveClaudeBin(): { command: string; useShell: boolean } {
  * - 不改模型名 / token / cc-switch 磁盘配置
  * - 出站经本机改写 → 原上游
  */
-export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<number> {
+export async function runClaudeWrapped(claudeArgs: string[] = [], options: RunClaudeWrappedOptions = {}): Promise<number> {
   const ready = checkClaudeWrapReady()
   if (!ready.ok) {
     console.error(pc.red('vision-relay claude 启动前检查未通过：'))
@@ -196,11 +200,15 @@ export async function runClaudeWrapped(claudeArgs: string[] = []): Promise<numbe
 
   // 写固定路径 --settings 文件，不碰 ~/.claude/settings.json
   const settingsFile = writeSessionSettingsFile(proxy.baseUrl)
-  console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
-  console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
-  console.error(pc.dim(`视觉模型: ${config.vision.model} @ ${config.vision.baseUrl}（${config.vision.type}）`))
-  console.error(pc.dim(`settings 覆盖: ${settingsFile}`))
-  console.error('')
+
+  // 非静默模式下输出诊断信息
+  if (!options.quiet) {
+    console.error(pc.dim(`vision-relay 会话改写: ${proxy.baseUrl}`))
+    console.error(pc.dim(`编码上游（${source}）: ${upstream}`))
+    console.error(pc.dim(`视觉模型: ${config.vision.model} @ ${config.vision.baseUrl}（${config.vision.type}）`))
+    console.error(pc.dim(`settings 覆盖: ${settingsFile}`))
+    console.error('')
+  }
 
   const { command: bin, useShell } = resolveClaudeBin()
   const settingsArgs = buildClaudeArgv(settingsFile, claudeArgs)

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       vision-relay:
-        specifier: ^0.12.1
-        version: 0.12.1
+        specifier: ^0.12.16
+        version: 0.12.16
 
   packages/commit-flow:
     dependencies:
@@ -1096,8 +1096,8 @@ packages:
   utif2@4.1.0:
     resolution: {integrity: sha512-+oknB9FHrJ7oW7A2WZYajOcv4FcDR4CfoGB0dPNfxbi4GO05RRnFmt5oa23+9w32EanrYcSJWspUiJkLMs+37w==}
 
-  vision-relay@0.12.1:
-    resolution: {integrity: sha512-K92bp1WVkgewBSAx/AeTmdWwNV0nSEpmAFliW5eGoYbmK6qcM/KjUaABh6QFyEdQ4/byzuJEoXVxr5KsNZV4jQ==}
+  vision-relay@0.12.16:
+    resolution: {integrity: sha512-biQqyrCyFqrqGxX/gdNJlphC7MZgDKjySjaGGzJyM4XqxxJYt9hQvYmmPeB7NyAFTN6vnUytODtuluD2n8RKrA==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -2165,7 +2165,7 @@ snapshots:
     dependencies:
       pako: 1.0.11
 
-  vision-relay@0.12.1:
+  vision-relay@0.12.16:
     dependencies:
       '@clack/prompts': 0.11.0
       commander: 14.0.3

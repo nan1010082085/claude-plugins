@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**
-当前版本：**0.12.16**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.13.0**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。
 
@@ -14,6 +14,7 @@
 ```bash
 npm install -g vision-relay
 vision-relay init          # 配置视觉模型（协议 / URL / Key / 模型名）
+vision-relay model         # 替换视觉模型（只换模型名 / 换供应商，每步可跳过）
 vision-relay setup         # 接线（一键确认；写 hook / MCP / 命令）
 vision-relay setup --all   # 不询问，配置所有已检测终端
 vision-relay doctor        # 检查配置与接线状态
@@ -80,6 +81,8 @@ vision-relay describe "#1" -q "图片内容"
 
 ```bash
 vision-relay claude          # 可跟原有参数，如 -c
+vision-relay claude -q       # 静默模式：不输出启动诊断信息
+vision-relay claude -q -c    # 静默 + 继续上一个会话
 ```
 
 - 用 `--settings` 固定路径文件（`~/.config/vision-relay/session-settings.json`）覆盖 `ANTHROPIC_BASE_URL` → 本机代理
@@ -89,6 +92,7 @@ vision-relay claude          # 可跟原有参数，如 -c
 - 无图：原样透传编码上游
 - Hook / MCP / 记忆等本地能力不受影响
 - 退出 Claude 后改写停止
+- `-q, --quiet`：静默模式，不输出启动诊断信息（减少终端缓冲区占用）
 
 `vision-relay doctor` 里有「会话包装」检查项。
 
@@ -113,6 +117,7 @@ vision-relay claude          # 可跟原有参数，如 -c
 | 命令 | 说明 |
 |------|------|
 | `init` | 配置视觉模型并测连通 |
+| `model` | 引导替换视觉模型（只换模型名 / 换供应商），每步可跳过 |
 | `setup` | 接线各终端；**覆盖更新** `/vision` 模板 |
 | `describe <图> [-q 问题]` | 同步识别，stdout 输出描述 |
 | `claude` | 会话包装启动 Claude（粘贴改写） |

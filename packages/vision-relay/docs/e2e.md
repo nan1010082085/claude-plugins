@@ -1,7 +1,19 @@
 # vision-relay E2E 测试记录
 
 > 日期：2026-08-20 | 环境：macOS (Darwin) | Node v24.15.0 | Claude Code (glm-5.2 / volces)
-> 视觉模型：mimo-v2.5（token-plan / xiaomimimo，openai + anthropic 双协议）
+> 视觉模型：mimo-v2.6-flash（token-plan / xiaomimimo，openai + anthropic 双协议）
+
+## 视觉模型替换（`vision-relay model`，2026-09-23）
+
+- [ ] `vision-relay model` 启动后展示当前摘要（协议/URL/模型，apiKey 打码）
+- [ ] 只换模型名：改 `model` 后 diff 只列该字段，保存成功
+- [ ] 全部回车跳过：提示"无变更，未保存"，config.json 不被改写
+- [ ] 换供应商：换协议后 URL/模型默认给出新协议推荐值，整组保存成功
+- [ ] 密钥回车跳过：保存后 apiKey 保持原值
+- [ ] 变更预览后拒绝保存：config.json 不被改写
+- [ ] 首步选"退出"：直接取消，无后续询问
+- [ ] 保存后选"立即测试"：真模型连通（或跳过测试后 `vision-relay test` 通过）
+- [ ] 替换后 `/vision` / hook 链路仍正常（换模型不影响接线）
 
 ## 环境验证
 
@@ -44,6 +56,12 @@
   - 编码模型 glm-5.2 自主调用 vision_describe 工具
   - 正确回答："Figma 官网，Cookie 弹窗在右下角黑色圆角区域"
 
+## 会话包装（vision-relay claude）
+
+- [x] `vision-relay claude -p "hello"` → 正常启动，输出诊断信息
+- [x] `vision-relay claude -q -p "hello"` → 静默模式，无诊断信息输出
+- [x] `vision-relay claude -q -c` → 静默模式 + 继续上一个会话
+
 ## 斜杠命令
 
 - [x] `/vision` 无参数 → 提醒提供图片路径
@@ -53,7 +71,7 @@
 
 ## CLI describe（v0.9.0 真模型）
 
-- [x] `vision-relay describe <图>` → 结构化描述（mimo-v2.5）
+- [x] `vision-relay describe <图>` → 结构化描述（mimo-v2.6-flash）
 - [x] `vision-relay describe <图> -q "..."` → 按问题简答
 - [x] 缺参 / 路径不存在 → exit 1
 - [x] `vision-relay test` openai 连通 ✓
@@ -96,6 +114,7 @@
 | 0.10.4 | 修复 `vision-relay claude`：Windows 上改用临时 settings 文件，避免 Invalid JSON provided to --settings |
 | 0.10.5 | Windows/mac 双端接线：USERPROFILE 主目录、hook 用 cmd /c、直写 ~/.claude.json MCP、Windows 跳过多选改一键确认 |
 | 0.10.6 | 识别完成时用户可见简报：hook `systemMessage`、MCP/describe 结果头、会话改写 stderr、/vision 要求先告知用户 |
+| 0.13.0 | 新增 `--quiet` 选项：静默模式不输出启动诊断信息，减少终端缓冲区占用 |
 
 ## 用法验收清单（0.10.2）
 

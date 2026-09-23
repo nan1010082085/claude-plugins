@@ -116,12 +116,26 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | 命令 | 功能 |
 |------|------|
 | `vision-relay init` | 问答式 TUI：协议 → baseUrl → 模型 → 密钥 → maxTokens → 立即测试连接 → 保存 → 顺势 setup |
+| `vision-relay model` | 引导替换视觉模型：只换模型名 / 换供应商；每步回车跳过保留现值；变更预览后保存，可选测试；不触发接线 |
 | `vision-relay setup` | 自动接线 + **覆盖更新** `/vision` 等命令模板 |
 | `vision-relay describe <图> [-q 问题]` | 同步识别，stdout 输出描述（`/vision` 优先 Bash 调用） |
 | `vision-relay test` | 发 1x1 测试图到视觉模型，验证连通/鉴权/响应非空 |
 | `vision-relay doctor` | 配置完整性 + 终端接线状态 |
 | `vision-relay mcp` | stdio MCP server（被终端拉起，非守护） |
 | `vision-relay hook` | Claude Code UserPromptSubmit 处理器（读 stdin JSON） |
+| `vision-relay claude [-q] [-c]` | 会话包装：临时本机改写后启动 Claude；`-q` 静默模式不输出诊断信息；`-c` 继续上一个会话 |
+
+### 替换视觉模型（`model`）
+
+已有配置只想换视觉模型时不重跑 `init`（避免重复接线询问）：
+
+1. 展示当前模型摘要（协议 / Base URL / 模型，apiKey 打码）
+2. 三选一：**只换模型名** / **换供应商（协议/URL/密钥/模型整组）** / **退出**
+3. 每步默认现值，回车即跳过；换协议时 URL/模型默认给出新协议推荐值（`claude-sonnet-5` / `gpt-4o-mini`）
+4. 空白输入在 `applyVisionPatch` 中视为跳过；无变更不写盘
+5. 变更预览（`formatVisionDiff`，apiKey 打码）→ 确认保存 → 可选测试连接（可跳过）
+
+纯逻辑（`model-swap.ts`：`applyVisionPatch` / `formatVisionDiff` / `maskApiKey` / `recommendedModel`）与向导流程（`tui.ts` `swapModelWizard`，mock `@clack/prompts` 脚本化交互）均有单测。
 
 ### Claude CLI 斜杠命令
 
@@ -153,7 +167,7 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 
 ## 7. 测试
 
-### 单元测试（66 例，Vitest）
+### 单元测试（118 例，Vitest）
 
 | 模块 | 覆盖 |
 |------|------|
@@ -165,6 +179,8 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | prepare | 压缩/长边/硬上限 |
 | describe-cli | stdout 输出、question 透传、缺图 exit 1 |
 | setup | Cursor MCP；**命令模板覆盖更新**含 describe 两段式 |
+| model-swap | 补丁跳过语义、diff 只列变更且打码、协议推荐模型、不可变性 |
+| tui（swapModelWizard） | mock `@clack/prompts` 脚本化：只换模型名 / 跳过不保存 / 换供应商整组 / 密钥跳过 / 拒绝保存 / 首步退出 |
 
 ### 集成冒烟
 
@@ -194,6 +210,7 @@ URL 规整：baseUrl 以 `/chat/completions`（或 `/messages`）结尾则原样
 | M2 | MCP server + Claude Code hook + 三终端 setup + doctor | ✅ 完成 |
 | M3 | 防抢跑文案 + 大图自动压缩 + Claude Code plugin 打包 + 斜杠命令 + 真模型 E2E | ✅ 完成 |
 | M4 | 命令优先两段式（`describe` + `/vision`）+ 删除代理 | ✅ 完成 |
+| M5 | 会话包装 `vision-relay claude` + `--quiet` 静默模式 | ✅ 完成 |
 | 后续 | 多视觉模型路由、Web UI | 按需 |
 
 ## 9. 命令优先两段式（主路径）
