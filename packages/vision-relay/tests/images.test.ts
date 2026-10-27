@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -7,6 +7,7 @@ import {
   loadClaudePastedImage,
   mediaTypeFor,
   resolveClaudePastedImagePath,
+  resolveClaudePastedImagesPath,
   tinyPng,
 } from '../src/images.js'
 
@@ -33,6 +34,22 @@ function fakeTranscript(entries: Array<Record<string, unknown>>): string {
   const file = join(mkdtempSync(join(tmpdir(), 'vr-tr-')), 'session.jsonl')
   writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n'))
   return file
+}
+
+/** 创建假的 CC ≥2.1.x 粘贴图目录：<root>/<project 编码>/<session>/images/<n>.png */
+function fakePasteImages(
+  sessions: Record<string, Record<string, Buffer>>,
+  projectKey = '-Users-x-proj',
+): string {
+  const root = mkdtempSync(join(tmpdir(), 'vr-pastes-'))
+  for (const [sess, files] of Object.entries(sessions)) {
+    const dir = join(root, projectKey, sess, 'images')
+    mkdirSync(dir, { recursive: true })
+    for (const [name, data] of Object.entries(files)) {
+      writeFileSync(join(dir, name), data)
+    }
+  }
+  return root
 }
 
 describe('mediaTypeFor', () => {
@@ -151,5 +168,90 @@ describe('loadClaudePastedImage — 全局 transcript 回退', () => {
     const emptyCache = fakeImageCache({})
     const result = loadClaudePastedImage(99, 1024 * 1024, 'noSession', emptyTranscript, undefined, [emptyTranscript], emptyCache)
     expect(result).toBeNull()
+  })
+})
+
+describe('resolveClaudePastedImagesPath — CC ≥2.1.x 落盘布局', () => {
+  const pngData = Buffer.from(tinyPng().data)
+
+  it('按 cwd 编码 + sessionId 精确定位', () => {
+    const root = fakePasteImages({ sessionA: { '1.png': pngData }, sessionB: { '1.png': pngData } })
+    const p = resolveClaudePastedImagesPath(1, 'sessionB', '/Users/x/proj', [root])
+    expect(p).toContain('sessionB')
+    expect(p).toContain('1.png')
+  })
+
+  it('cwd 编码不符时枚举项目目录仍能命中', () => {
+    const root = fakePasteImages({ sessionA: { '2.png': pngData } })
+    const p = resolveClaudePastedImagesPath(2, 'sessionA', '/somewhere/else', [root])
+    expect(p).toContain('sessionA')
+    expect(p).toContain('2.png')
+  })
+
+  it('跨会话兜底取 mtime 更新的文件', () => {
+    const root = fakePasteImages({ oldSession: { '3.png': pngData }, newSession: { '3.png': pngData } })
+    const oldFile = join(root, '-Users-x-proj', 'oldSession', 'images', '3.png')
+    const newFile = join(root, '-Users-x-proj', 'newSession', 'images', '3.png')
+    utimesSync(oldFile, new Date('2025-01-01'), new Date('2025-01-01'))
+    utimesSync(newFile, new Date('2025-06-01'), new Date('2025-06-01'))
+    const p = resolveClaudePastedImagesPath(3, undefined, undefined, [root])
+    expect(p).toContain('newSession')
+  })
+
+  it('所有目录都没有时返回 null', () => {
+    const root = fakePasteImages({ s1: {} })
+    expect(resolveClaudePastedImagesPath(99, 's1', undefined, [root])).toBeNull()
+    expect(resolveClaudePastedImagesPath(1, undefined, undefined, [])).toBeNull()
+  })
+})
+
+describe('loadClaudePastedImage — CC ≥2.1.x 新落盘（粘贴当轮回归）', () => {
+  const pngData = Buffer.from(tinyPng().data)
+
+  it('transcript 尚未落库时从新版 images 目录读取（UserPromptSubmit hook 当轮场景）', () => {
+    const root = fakePasteImages({ sessionA: { '20.png': pngData } })
+    // 模拟 hook 时刻：当前消息（含 [Image #20] 文本）已存在，但图片 base64 尚未写入 transcript
+    const currentTranscript = fakeTranscript([
+      { type: 'user', timestamp: '2025-01-02T00:00:00Z', message: { content: [{ type: 'text', text: '看图 [Image #20]' }] } },
+    ])
+    const emptyCache = fakeImageCache({})
+    const result = loadClaudePastedImage(20, 1024 * 1024, 'sessionA', currentTranscript, '/Users/x/proj', [currentTranscript], emptyCache, [root])
+    expect(result).not.toBeNull()
+    expect(result!.data).toEqual(pngData)
+    expect(result!.source).toContain('[Image #20]')
+  })
+
+  it('新版 images 目录优先于 transcript 兜底', () => {
+    const diskPng = Buffer.from('disk-image-bytes')
+    const root = fakePasteImages({ sessionA: { '5.png': diskPng } })
+    const transcript = fakeTranscript([
+      {
+        type: 'user',
+        timestamp: '2025-01-01T00:00:00Z',
+        message: { content: [{ type: 'text', text: '[Image #5]' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngData.toString('base64') } }] },
+        imagePasteIds: [5],
+      },
+    ])
+    const emptyCache = fakeImageCache({})
+    const result = loadClaudePastedImage(5, 1024 * 1024, 'sessionA', transcript, '/Users/x/proj', [transcript], emptyCache, [root])
+    expect(result).not.toBeNull()
+    expect(result!.data).toEqual(diskPng)
+    expect(result!.source).toContain('粘贴图片')
+  })
+
+  it('cacheRoot 隔离模式下不扫真实系统目录', () => {
+    // 未注入 pasteRoots 且注入 cacheRoot → 新版目录查找被跳过，落回 transcript 兜底
+    const transcript = fakeTranscript([
+      {
+        type: 'user',
+        timestamp: '2025-01-01T00:00:00Z',
+        message: { content: [{ type: 'text', text: '[Image #7]' }, { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngData.toString('base64') } }] },
+        imagePasteIds: [7],
+      },
+    ])
+    const emptyCache = fakeImageCache({})
+    const result = loadClaudePastedImage(7, 1024 * 1024, 'sessionA', transcript, '/Users/x/proj', [transcript], emptyCache)
+    expect(result).not.toBeNull()
+    expect(result!.source).toContain('transcript')
   })
 })

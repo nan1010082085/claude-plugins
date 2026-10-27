@@ -36,6 +36,7 @@
 - [x] `[Image #N]` + 真实路径 -> 一起识别
 - [x] `[Pasted text #N]` 也触发提示
 - [x] **粘贴图片直读**：stdin `session_id` + `[Image #1]` -> 读 `~/.claude/image-cache/<session_id>/1.png` 识别注入（2026-08-21 真模型验证，返回完整结构化描述）
+- [x] **粘贴图片直读（CC ≥2.1.x 布局）**：stdin `session_id` + `[Image #N]` -> 读 `<tmp>/claude-<uid>/<cwd 编码>/<session>/images/N.png` 识别注入（2026-10-27 真模型验证：模拟 hook 时刻 transcript 无图、image-cache 缺失，从落盘路径命中 20.png 返回完整描述。背景：CC 2.1.x 不再写 image-cache，且 transcript 晚于 hook 落库，粘贴当轮必挂「未能读取内联图片」）
 - [x] 粘贴图片与路径引用混合 -> 并行识别
 - [x] 缓存缺失（session 不存在）-> 降级提示，不再要求另存文件
 

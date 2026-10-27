@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { isIP } from 'node:net'
+import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { claudeConfigDir, userHome } from './paths.js'
 
@@ -478,7 +479,92 @@ export function loadRecentImageFromTranscripts(maxBytes: number, preferPath?: st
 }
 
 /**
- * 解析 Claude Code `[Image #N]` 对应的落盘路径。
+ * Claude Code ≥2.1.x 粘贴图落盘根目录候选：`<tmp>/claude-<uid>`。
+ * macOS 上实测为 `/private/tmp/claude-501`；Linux 为 `/tmp/claude-<uid>`。
+ * `VISION_RELAY_TMP_BASE` 可覆盖（供测试隔离，避免扫到真实系统粘贴图）。
+ */
+function claudePasteRootCandidates(): string[] {
+  const override = process.env.VISION_RELAY_TMP_BASE?.trim()
+  const bases = override ? [override] : ['/tmp', '/private/tmp', tmpdir()]
+  const out = new Set<string>()
+  for (const base of bases) {
+    try {
+      for (const e of readdirSync(base, { withFileTypes: true })) {
+        if (e.isDirectory() && e.name.startsWith('claude-')) out.add(join(base, e.name))
+      }
+    } catch {}
+  }
+  return [...out]
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 解析 Claude Code ≥2.1.x 的粘贴图落盘路径：
+ * `<tmp>/claude-<uid>/<cwd 编码>/<sessionId>/images/<n>.<ext>`。
+ * 该文件在提交瞬间（UserPromptSubmit hook 运行前）即已写盘，
+ * 是粘贴当轮唯一可用的图源——transcript 要等 hook 结束后才落库。
+ * @param pasteRoots 可选覆盖 claude-* 根目录列表（供测试注入）
+ */
+export function resolveClaudePastedImagesPath(
+  n: number,
+  sessionId?: string,
+  cwd?: string,
+  pasteRoots?: string[],
+): string | null {
+  const roots = pasteRoots ?? claudePasteRootCandidates()
+  if (!roots.length) return null
+  const fileNameRe = new RegExp(`^${n}\\.[a-z0-9]+$`, 'i')
+  const findInImagesDir = (dir: string): string | null => {
+    try {
+      const file = readdirSync(dir).find((f) => fileNameRe.test(f))
+      return file ? join(dir, file) : null
+    } catch {
+      return null
+    }
+  }
+
+  // 1) 精确定位：<root>/<cwd 编码>/<sessionId>/images
+  if (sessionId && cwd) {
+    for (const root of roots) {
+      const hit = findInImagesDir(join(root, encodeClaudeProjectKey(cwd), sessionId, 'images'))
+      if (hit) return hit
+    }
+  }
+  // 2) 枚举 <root>/<project>/<sessionId>/images（cwd 编码不符或未提供 cwd）
+  if (sessionId) {
+    for (const root of roots) {
+      for (const proj of safeReaddir(root)) {
+        const hit = findInImagesDir(join(root, proj, sessionId, 'images'))
+        if (hit) return hit
+      }
+    }
+  }
+  // 3) 跨会话兜底：任意 <root>/<project>/<session>/images，按文件 mtime 新→旧
+  const hits: Array<{ p: string; m: number }> = []
+  for (const root of roots) {
+    for (const proj of safeReaddir(root)) {
+      for (const s of safeReaddir(join(root, proj))) {
+        const hit = findInImagesDir(join(root, proj, s, 'images'))
+        if (!hit) continue
+        try {
+          hits.push({ p: hit, m: statSync(hit).mtimeMs })
+        } catch {}
+      }
+    }
+  }
+  hits.sort((a, b) => b.m - a.m)
+  return hits[0]?.p ?? null
+}
+
+/**
+ * 解析 Claude Code `[Image #N]` 对应的落盘路径（旧版 image-cache 布局）。
  * 优先查指定 sessionId 目录；找不到则扫全部 session 目录（按 mtime 新→旧），
  * 以支持跨会话引用历史图片的场景。
  * @param cacheRoot 可选覆盖 image-cache 根目录（供测试注入）
@@ -531,11 +617,13 @@ export function resolveClaudePastedImagePath(n: number, sessionId?: string, cach
 
 /**
  * 读取粘贴图为 ImageInput。
- * 顺序：image-cache → 指定 transcript → 全局 transcript 搜索。
- * Claude 常清理 cache；跨会话引用历史图片时指定 transcript 也找不到，
- * 所以最后兜底扫描全部 transcript（耗时可接受，仅在前两步都 miss 时触发）。
+ * 顺序：新版 images 落盘（CC ≥2.1.x）→ 旧版 image-cache → 指定 transcript → 全局 transcript 搜索。
+ * 新版落盘文件在提交瞬间写入，是粘贴当轮唯一可用图源（transcript 要等 hook 结束后才落库）；
+ * Claude 常清理旧版 cache；跨会话引用历史图片时指定 transcript 也找不到，
+ * 所以最后兜底扫描全部 transcript（耗时可接受，仅在前三步都 miss 时触发）。
  * @param allTranscripts 可选覆盖全局 transcript 列表（供测试注入）
  * @param cacheRoot 可选覆盖 image-cache 根目录（供测试注入）
+ * @param pasteRoots 可选覆盖新版粘贴图 claude-* 根目录列表（供测试注入）
  */
 export function loadClaudePastedImage(
   n: number,
@@ -545,8 +633,24 @@ export function loadClaudePastedImage(
   cwd?: string,
   allTranscripts?: string[],
   cacheRoot?: string,
+  pasteRoots?: string[],
 ): ImageInput | null {
-  // 1. image-cache 文件（最快，但常被 Claude 清理）
+  // 1. 新版粘贴图落盘（CC ≥2.1.x）：<tmp>/claude-<uid>/<cwd 编码>/<session>/images/<n>.png
+  // cacheRoot 注入视为测试隔离模式：未注入 pasteRoots 时不扫真实系统目录
+  const pNew = resolveClaudePastedImagesPath(n, sessionId, cwd, pasteRoots ?? (cacheRoot ? [] : undefined))
+  if (pNew) {
+    try {
+      const size = statSync(pNew).size
+      if (size <= maxBytes) {
+        return {
+          data: readFileSync(pNew),
+          mediaType: mediaTypeFor(pNew) ?? 'image/png',
+          source: `粘贴图片 [Image #${n}]`,
+        }
+      }
+    } catch {}
+  }
+  // 2. 旧版 image-cache 文件（CC ≤2.0.x，常被 Claude 清理）
   const p = resolveClaudePastedImagePath(n, sessionId, cacheRoot)
   if (p) {
     try {
@@ -560,7 +664,7 @@ export function loadClaudePastedImage(
       }
     } catch {}
   }
-  // 2. 指定 transcript（当前会话）
+  // 3. 指定 transcript（当前会话）
   const candidates = [
     transcriptPath,
     sessionId && cwd ? claudeProjectTranscriptPath(sessionId, cwd) : undefined,
@@ -569,7 +673,7 @@ export function loadClaudePastedImage(
     const fromTranscript = loadPastedImageFromTranscript(tp, n, maxBytes)
     if (fromTranscript) return fromTranscript
   }
-  // 3. 全局搜索：跨会话引用历史图片（如新会话中输入 "[Image #1]" 引用旧会话图片）
+  // 4. 全局搜索：跨会话引用历史图片（如新会话中输入 "[Image #1]" 引用旧会话图片）
   const transcripts = allTranscripts ?? listTranscriptPaths()
   for (const tp of transcripts) {
     if (candidates.includes(tp)) continue // 已查过，跳过

@@ -41,8 +41,8 @@
 | 本地路径 | 读文件 |
 | http(s) URL | 下载（禁私网 SSRF） |
 | `clipboard` | 系统剪贴板（macOS osascript/pngpaste；Linux wl-paste/xclip） |
-| `recent` | Claude `image-cache` 或 Codex `attachments` 最近一张 |
-| `#N` / `[Image #N]` | Claude image-cache 对应序号 |
+| `recent` | Claude `image-cache`/粘贴图落盘 或 Codex `attachments` 最近一张 |
+| `#N` / `[Image #N]` | Claude 粘贴图落盘（CC ≥2.1.x `<tmp>/claude-*/…/images/N.png`）或旧 image-cache 对应序号 |
 
 **产品约定：** 无会话包装时，引导用户**不要**把图贴进对话框；截图后用 `clipboard` 或存文件再 `/vision`。
 

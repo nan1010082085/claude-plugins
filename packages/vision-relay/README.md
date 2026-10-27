@@ -1,7 +1,7 @@
 # vision-relay
 
 **为无视觉能力的编码模型中转图片理解。**
-当前版本：**0.13.0**（[npm](https://www.npmjs.com/package/vision-relay)）
+当前版本：**0.13.1**（[npm](https://www.npmjs.com/package/vision-relay)）
 
 编码模型（DeepSeek、GLM、Qwen 等）看不了图时，先用你配置的**视觉模型**出文字，再交给编码模型改代码。
 
@@ -148,10 +148,11 @@ vision-relay claude -q -c    # 静默 + 继续上一个会话
 
 当 Claude Code 的 hook 收到 `[Image #N]` 引用时，按以下顺序查找：
 
-1. **image-cache 文件**：`~/.claude/image-cache/<session>/<N>.png`（最快，但 Claude 常清理）
-2. **跨 session 缓存**：扫描所有 session 的 image-cache 目录（v0.12.5+）
-3. **当前会话 transcript**：从会话 jsonl 中提取 base64 图片数据
-4. **全局 transcript 搜索**：扫描所有会话的 transcript（v0.12.5+，支持跨会话引用历史图片）
+1. **粘贴图落盘（CC ≥2.1.x）**：`<tmp>/claude-<uid>/<cwd 编码>/<session>/images/<N>.png`——提交瞬间写盘，是粘贴当轮唯一可用图源（transcript 要等 hook 结束后才落库）
+2. **image-cache 文件（CC ≤2.0.x）**：`~/.claude/image-cache/<session>/<N>.png`（旧版布局，Claude 常清理）
+3. **跨 session 缓存**：扫描所有 session 的缓存目录（v0.12.5+）
+4. **当前会话 transcript**：从会话 jsonl 中提取 base64 图片数据（hook 结束后落库，供后续轮引用）
+5. **全局 transcript 搜索**：扫描所有会话的 transcript（v0.12.5+，支持跨会话引用历史图片）
 
 ---
 
@@ -194,6 +195,8 @@ vision-relay claude -q -c    # 静默 + 继续上一个会话
 
 | 版本 | 变更 |
 |------|------|
+| **0.13.1** | 修复粘贴图片当轮「未能读取内联图片」：新增 CC ≥2.1.x 粘贴图落盘路径 `<tmp>/claude-<uid>/<cwd 编码>/<session>/images/N.png` 作为查找链第 1 级（CC 2.1.x 不再写 image-cache，且 transcript 晚于 hook 落库） |
+| 0.13.0 | 新增 `model` 命令引导替换视觉模型 |
 | 0.12.13–0.12.15 | npm README 版本号同步重发（无功能变更；由此确立「先更新 README 再 publish」流程） |
 | **0.12.12** | 启动日志增加视觉模型地址和模型名 |
 | 0.12.11 | 去除 proxy stderr 回显 |

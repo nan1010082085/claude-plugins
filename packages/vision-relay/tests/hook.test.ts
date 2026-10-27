@@ -11,14 +11,18 @@ vi.mock('../src/vision.js', () => ({ describeImage: describeImageMock }))
 let cfgDir: string
 let cwd: string
 let claudeDir: string
+let tmpBase: string
 
 beforeEach(() => {
   cfgDir = mkdtempSync(join(tmpdir(), 'vb-hook-'))
   cwd = mkdtempSync(join(tmpdir(), 'vb-hook-cwd-'))
   // 隔离 image-cache，避免读到真实 ~/.claude 的粘贴缓存
   claudeDir = mkdtempSync(join(tmpdir(), 'vb-hook-claude-'))
+  // 隔离 CC ≥2.1.x 粘贴图落盘目录，避免扫到真实 /tmp/claude-*
+  tmpBase = mkdtempSync(join(tmpdir(), 'vb-hook-tmp-'))
   process.env.VISION_RELAY_CONFIG_DIR = cfgDir
   process.env.CLAUDE_CONFIG_DIR = claudeDir
+  process.env.VISION_RELAY_TMP_BASE = tmpBase
   const cfg = defaultConfig()
   cfg.vision.apiKey = 'sk-test'
   saveConfig(cfg)
@@ -38,9 +42,17 @@ function writePastedImage(sessionId: string, n: number): void {
   writeFileSync(join(dir, `${n}.png`), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
 }
 
+/** CC ≥2.1.x 布局：<tmp>/claude-<uid>/<project 编码>/<session>/images/<n>.png */
+function writePastedImageNewLayout(sessionId: string, n: number): void {
+  const dir = join(tmpBase, 'claude-501', '-tmp-proj', sessionId, 'images')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, `${n}.png`), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'))
+}
+
 afterEach(() => {
   delete process.env.VISION_RELAY_CONFIG_DIR
   delete process.env.CLAUDE_CONFIG_DIR
+  delete process.env.VISION_RELAY_TMP_BASE
 })
 
 describe('runClaudeCodeHook', () => {
@@ -134,6 +146,17 @@ describe('runClaudeCodeHook', () => {
     const input = JSON.stringify({ session_id: 'sess-1', prompt: '[Image #1] 这个报错怎么修' })
     const { additionalContext } = await runClaudeCodeHook(input, cwd)
     expect(additionalContext).toContain('[vision-relay 粘贴图片 [Image #1]]')
+    expect(additionalContext).toContain('TypeError')
+    expect(describeImageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('[Image #N] 从 CC ≥2.1.x images 落盘目录读取（粘贴当轮，transcript 尚未落库）', async () => {
+    // 复现 2026-10-27 回归：image-cache 已消失、transcript 无图，
+    // 但 <tmp>/claude-*/<proj>/<session>/images/<n>.png 在 hook 运行前已写盘
+    writePastedImageNewLayout('sess-new', 17)
+    const input = JSON.stringify({ session_id: 'sess-new', prompt: '[Image #17] 这个设计稿怎么样' })
+    const { additionalContext } = await runClaudeCodeHook(input, cwd)
+    expect(additionalContext).toContain('[vision-relay 粘贴图片 [Image #17]]')
     expect(additionalContext).toContain('TypeError')
     expect(describeImageMock).toHaveBeenCalledTimes(1)
   })
